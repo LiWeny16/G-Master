@@ -1,6 +1,6 @@
 ﻿<div align="center">
   <img src="public/icons/icon-origin.png" alt="G-Master Logo" width="128" />
-  <h1>✨ G-Master</h1>
+  <h1>G-Master</h1>
   <p><em>为 Gemini 注入灵魂：多轮深度思考、自我审查与自动纠错引擎</em></p>
 
   [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
@@ -49,7 +49,7 @@ graph TD
     B -- 不需要 --> C[常规大模型流输出]
     B -- 需要 --> D[开启 Deep Think 循环]
     
-    subgraph ♻️ 深度思考反馈环
+    subgraph Loop [♻️ 深度思考反馈环]
     D --> E[推演与起草]
     E --> F[多维度审查]
     F --> |发现漏洞/需要查证| G[调用工具链/Tavily/读写本地]
