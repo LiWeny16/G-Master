@@ -1,107 +1,102 @@
-# React Chrome Extension Boilerplate with Vite and TypeScript
+# G-Master 深度思考浏览器插件
 
-![GitHub license](https://img.shields.io/github/license/himalaya0035/chrome-extension-boilerplate-react-vite-typescript)
-![React](https://img.shields.io/badge/react-18.x-blue)
-![TypeScript](https://img.shields.io/badge/typescript-5.x-blue)
-![Tailwind CSS](https://img.shields.io/badge/tailwindcss-3.x-blue)
-![Vite](https://img.shields.io/badge/vite-4.x-blue)
+G-Master 是一个基于 Manifest V3 的 Gemini 增强插件，提供多轮深度思考、审查视角、工具链扩展（如 Tavily）和本地工作区能力。
 
-This repository aims to provide an easy-to-use and minimilastic foundation for developing Chrome extensions using modern web technologies, including React for building the user interface, TypeScript for type-safe development, Tailwind CSS for effortless styling, and Vite as the module bundler for speedy development.
+## 技术栈
 
-The focus is on providing a minimalistic and straightforward boilerplate for fast Chrome extension development, without unnecessary complexities.
+- React + TypeScript
+- Vite + CRXJS
+- MUI
+- MobX
 
-## About
+## 本地开发
 
-As a developer, I struggled to find a comprehensive and straightforward resource to kickstart building Chrome extensions with React, Vite, and TypeScript. To bridge this gap, I decided to build it on my own. This project is born out of the frustration I faced and my desire to make the development process easier for fellow developers.
+1. 安装依赖
 
- Explore this minimalistic boilerplate that includes the necessary tools for Chrome extension development while keeping things simple and approachable.
+```bash
+pnpm install
+```
 
+2. 启动开发模式
 
-## Features
+```bash
+pnpm dev
+```
 
-- 🚀 Fast development with Vite's hot module replacement.
-- ⚙️ Dynamic manifest generation using the CRXJS vite plugin.
-- ⚛️ React-based user interface for the extension's popup, options page, and other components.
-- 🔧 TypeScript configuration for type-safe coding.
-- 🎨 Integrated with Tailwind CSS for flexible styling (Feel free to remove tailwind, if not required).
-- ⚡️ **Out-of-the-box support for background scripts, options pages, and content scripts. Customize them to fit your needs without the hassle of manual setup. Just start developing right away!**
+3. 生产构建
 
-## Prerequisites
+```bash
+pnpm build
+```
 
-Before you begin, make sure you have the following installed:
+构建后产物位于 dist 目录。
 
-- Node.js (recommended version 16.x or higher)
-- npm (comes with Node.js)
+## 图标配置
 
-## Getting Started
+项目已配置扩展图标并接入 manifest：
 
-Follow these steps to get the boilerplate code up and running:
+- public/icons/icon-16.png
+- public/icons/icon-32.png
+- public/icons/icon-48.png
+- public/icons/icon-128.png
 
-1. **Clone the repository:**
+如需替换图标，建议保持同名与同尺寸，避免商店审核或浏览器显示异常。
 
-    ```bash
-    git clone https://github.com/himalaya0035/chrome-extension-boilerplate-react-vite-typescript
-    ```
+## Edge 商店自动化发布（GitHub Actions）
 
-2. **Navigate to the project folder:**
+仓库已包含工作流：.github/workflows/publish-edge.yml
 
-    ```bash
-    cd chrome-extension-boilerplate-react-vite-typescript
-    ```
+支持两种触发方式：
 
-3. **Install dependencies:**
+1. 手动触发（Actions 页面点击 Run workflow）
+2. 推送版本标签触发（例如 v1.0.1）
 
-    ```bash
-    npm install
-    ```
+工作流会自动执行：
 
-4. **Run the development server:**
+1. 安装依赖
+2. 构建扩展
+3. 打包 dist 为 zip
+4. 调用 Edge Add-ons API 上传并提交审核
 
-    ```bash
-    npm run dev
-    ```
+### 需要配置的 GitHub Secrets
 
-    This command will start the development server using Vite, enabling hot module replacement and allowing you to see your changes in real.
-5. **Load the extension in Chrome:**
+在仓库 Settings -> Secrets and variables -> Actions 中新增：
 
-    - Open the Chrome browser.
-    - Navigate to `chrome://extensions/`.
-    - Turn on the "Developer mode" toggle in the top-right corner.
-    - Click the "Load unpacked" button and select the `dist` folder inside your project directory.
+- EDGE_PRODUCT_ID：Edge Partner Center 中的扩展 Product ID
+- EDGE_API_KEY：Edge Add-ons Publish API 的 API key
+- EDGE_CLIENT_ID：Edge Add-ons Publish API 的 Client ID
+- EDGE_NOTES_FOR_CERTIFICATION（可选）：给审核员的说明
 
-6. **Start Developing:**
+### 手动发布步骤
 
-    - The popup UI can be found in the `src/App.tsx` directory.
-    - Customize the manifest template in `src/manifest.json` and let CRXJS handle the dynamic manifest generation.
-    - The support for background scripts, options page, content scripts is already configured. Customise them in their respective folder.
+1. 打开 Actions
+2. 选择 Publish Edge Add-on
+3. 点击 Run workflow
+4. 可选填写：
+   - upload_only: true 表示仅上传草稿，不自动提交发布
+   - notes_for_certification: 本次审核备注
 
-7. **Build for Production:**
+### Tag 自动发布
 
-    When you're ready to publish your extension, create a production build by running:
+推送 v 前缀标签即可触发自动发布：
 
-    ```bash
-    npm run build
-    ```
+```bash
+git tag v1.0.1
+git push origin v1.0.1
+```
 
-    The optimized files will be available in the `dist` folder. You can then package this folder to distribute your extension.
+## 常见问题
 
-## Contributing
+1. 上传成功但未发布
+   - 检查是否使用了 upload_only=true。
 
-Contributions are welcome! If you encounter any issues or have ideas for improvements, feel free to open an issue or submit a pull request.
+2. API 鉴权失败
+   - 检查 EDGE_API_KEY 与 EDGE_CLIENT_ID 是否来自同一组 Publish API 凭据。
+
+3. 商店提示图标问题
+   - 确认 manifest 已声明 16/32/48/128 图标，并确保对应文件存在。
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
-
-## Support
-
-⭐️ If you find this boilerplate helpful, consider giving it a star on [GitHub](https://github.com/himalaya0035/chrome-extension-boilerplate-react-vite-typescript).
-
----
-
-Happy coding! If you have any questions or need further assistance, please don't hesitate to reach out.
-
-**Disclaimer:** This project was created by [Himalaya Gupta](https://github.com/himalaya0035/), for the community, to address the lack of comprehensive resources for building Chrome extensions with React, Vite, TypeScript, and Tailwind CSS. It is not officially endorsed by any of the mentioned technologies or organizations.
-
----
+[MIT](LICENSE)
 
