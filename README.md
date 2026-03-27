@@ -1,5 +1,5 @@
 ﻿<div align="center">
-  <img src="public/icons/icon-origin" alt="G-Master Logo" width="128" />
+  <img src="public/icons/icon-origin.png" alt="G-Master Logo" width="128" />
   <h1>✨ G-Master</h1>
   <p><em>为 Gemini 注入灵魂：多轮深度思考、自我审查与自动纠错引擎</em></p>
 
