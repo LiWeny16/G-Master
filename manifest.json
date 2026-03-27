@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "Gemini Deep Think",
+  "version": "1.0.0",
+  "description": "深度思考模式 - 驱动 Gemini 进行多轮自我审查式深度思考",
+  "action": {
+    "default_popup": "index.html"
+  },
+  "options_ui": {
+    "page": "src/optionsPage/optionsPage.html",
+    "open_in_tab": true
+  },
+  "background": {
+    "service_worker": "src/background/background.ts"
+  },
+  "content_scripts": [
+    {
+      "js": ["src/content/content.tsx"],
+      "css": ["src/content/content.css"],
+      "matches": ["https://gemini.google.com/app/*"]
+    }
+  ],
+  "permissions": ["storage"],
+  "host_permissions": ["https://api.tavily.com/*"],
+  "icons": {}
+}
