@@ -22,6 +22,10 @@ export class StateStore {
   toolCallRoundsThisSession = 0;
   /** AUTO 模式本轮动态规划的深度轮次（null 表示使用常规配置） / Dynamically planned deep loops for the current round in AUTO mode (null means fallback to default config) */
   plannedDeepLoops: number | null = null;
+  /** 当前用户提问轮内，澄清问卷触发次数（防止无限追问） */
+  clarifyRoundsThisSession = 0;
+  /** 单轮对话内最多允许进入问卷次数（运行时防护） */
+  maxClarifyRoundsPerTurn = 2;
   /** 待澄清的问卷问题列表（当 phase === 'clarify' 时有效） */
   clarifyQuestions: ClarifyQuestion[] = [];
   /** 地構存储待处理的 intent 解析结果（问卷提交后续用） */
@@ -91,8 +95,17 @@ export class StateStore {
     this.lastIntentSummary = '';
     this.toolCallRoundsThisSession = 0;
     this.plannedDeepLoops = null;
+    this.clarifyRoundsThisSession = 0;
     this.clarifyQuestions = [];
     this.pendingIntent = null;
+  }
+
+  tryEnterClarifyRound(): boolean {
+    if (this.clarifyRoundsThisSession >= this.maxClarifyRoundsPerTurn) {
+      return false;
+    }
+    this.clarifyRoundsThisSession += 1;
+    return true;
   }
 
   updateConfig(partial: Partial<DeepThinkConfig>): void {

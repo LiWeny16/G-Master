@@ -387,7 +387,7 @@ const Panel: React.FC<Props> = observer(({ store, open, anchorPos, onClose, onAb
                 ) : (
                   <>
                     <Loader2 size={12} style={{ color: '#8B7355', animation: 'dtIconSpin 1s linear infinite' }} />
-                    <Typography className="dt-status-text">{t('panel_status_thinking', { loop: store.currentLoop })}</Typography>
+                    <Typography className="dt-status-text">{t('panel_status_thinking', { loop: Math.max(1, store.currentLoop) })}</Typography>
                   </>
                 )}
               </Box>

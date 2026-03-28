@@ -15,6 +15,11 @@ export interface ISiteAdapter {
   shouldReinjectUI(mutations: MutationRecord[]): boolean;
 
   /**
+   * 停止当前正在生成的回答。
+   */
+  stopGeneration?(): void;
+
+  /**
    * 切换 Gemini 网页端模型模式。
    *
    * 实现中可能在打开菜单、点击选项等步骤之间插入 `setTimeout` 等延迟，以降低竞态；

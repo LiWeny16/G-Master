@@ -19,6 +19,32 @@ function delay300(): Promise<void> {
 }
 
 export class GeminiAdapter implements ISiteAdapter {
+  private isDtOwnedNode(node: Node): boolean {
+    if (node.nodeType !== Node.ELEMENT_NODE) return false;
+    const el = node as HTMLElement;
+    return Boolean(
+      el.id?.startsWith('dt-') ||
+      Array.from(el.classList ?? []).some((cls) => cls.startsWith('dt-')) ||
+      el.closest?.('[id^="dt-"]') ||
+      el.closest?.('[class*="dt-"]')
+    );
+  }
+
+  private isRelevantAddedNode(node: Node): boolean {
+    if (node.nodeType !== Node.ELEMENT_NODE) return false;
+    if (this.isDtOwnedNode(node)) return false;
+
+    const el = node as HTMLElement;
+    if (
+      el.matches('message-content, .query-text, .send-button, .leading-actions-wrapper') ||
+      el.querySelector('message-content, .query-text, .send-button, .leading-actions-wrapper')
+    ) {
+      return true;
+    }
+
+    return false;
+  }
+
   getEditor(): HTMLElement | null {
     return document.querySelector(SEL.editor);
   }
@@ -29,6 +55,18 @@ export class GeminiAdapter implements ISiteAdapter {
 
   isGenerating(): boolean {
     return this.getSendButton()?.classList.contains('stop') ?? false;
+  }
+
+  stopGeneration(): void {
+    const btn = this.getSendButton();
+    if (btn && btn.classList.contains('stop')) {
+      // 标记为程序触发的 stop，避免被上层误判为用户手动中断。
+      btn.setAttribute('data-dt-auto-stop', '1');
+      btn.click();
+      window.setTimeout(() => {
+        btn.removeAttribute('data-dt-auto-stop');
+      }, 0);
+    }
   }
 
   getLastResponseText(): string {
@@ -94,7 +132,10 @@ export class GeminiAdapter implements ISiteAdapter {
 
   shouldReinjectUI(mutations: MutationRecord[]): boolean {
     for (const mutation of mutations) {
-      if (mutation.addedNodes.length > 0) return true;
+      for (const node of mutation.addedNodes) {
+        if (this.isRelevantAddedNode(node)) return true;
+      }
+
       for (const node of mutation.removedNodes) {
         if (node.nodeType !== Node.ELEMENT_NODE) continue;
         const el = node as HTMLElement;

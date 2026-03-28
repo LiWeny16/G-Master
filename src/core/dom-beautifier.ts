@@ -1,11 +1,25 @@
 import { ISiteAdapter } from '../adapters/site-adapter';
 import { StateStore } from '../stores/state-store';
-import { parseIntentJson } from './parsers';
+import {
+  CLARIFY_TAG,
+  NEXT_PROMPT_TAG,
+  ROUTER_TAG,
+  extractTaggedPayload,
+  parseClarifyBlock,
+  parseIntentJson,
+  parseTagBoundary,
+  removeTaggedBlock,
+} from './parsers';
+
+// 一键开关：关闭后不再把内部标记替换为 UI 标签/徽章，仅保留原始文本显示。
+export const ENABLE_MARKER_UI_REPLACEMENT = true;
 
 export class DOMBeautifier {
   private domBusy = false;
   private copyCleanerInstalled = false;
   private pendingCopyText: string | null = null;
+
+  private readonly mountHostSelector = '.markdown, .response-content, .model-response-text, .markdown-content';
 
   constructor(
     private adapter: ISiteAdapter,
@@ -21,6 +35,7 @@ export class DOMBeautifier {
     this.domBusy = true;
     try {
       this.ensureCopyCleaner();
+      if (!ENABLE_MARKER_UI_REPLACEMENT) return;
       this.processUserBubbles();
       this.processResponseMarkers();
     } finally {
@@ -140,21 +155,108 @@ export class DOMBeautifier {
     ev.clipboardData.setData('text/plain', cleaned);
   };
 
+  private getNodeSignature(text: string): string {
+    const head = text.slice(0, 120);
+    const tail = text.slice(-120);
+    return `${text.length}:${head}:${tail}`;
+  }
+
+  private parseNextPromptText(text: string): string | null {
+    const tagged = extractTaggedPayload(text, NEXT_PROMPT_TAG);
+    if (tagged) {
+      const clean = tagged.trim();
+      return clean || null;
+    }
+
+    const legacy = text.match(/\[NEXT_PROMPT:\s*([\s\S]*?)\]/i);
+    const legacyText = legacy?.[1]?.trim() ?? '';
+    return legacyText || null;
+  }
+
+  private upsertNextPromptCard(target: HTMLElement, nextPromptText: string | null): void {
+    const oldCard = target.querySelector('.dt-next-prompt-card') as HTMLElement | null;
+    if (!nextPromptText) {
+      if (oldCard) oldCard.remove();
+      return;
+    }
+
+    const titleText = this.store.config.language === 'en' ? '🧩 Next Prompt' : '🧩 下一步提示';
+
+    if (oldCard) {
+      const body = oldCard.querySelector('.dt-next-prompt-body') as HTMLElement | null;
+      if (body) body.textContent = nextPromptText;
+      return;
+    }
+
+    const card = document.createElement('div');
+    card.className = 'dt-next-prompt-card';
+
+    const title = document.createElement('div');
+    title.className = 'dt-next-prompt-title';
+    title.textContent = titleText;
+
+    const body = document.createElement('div');
+    body.className = 'dt-next-prompt-body';
+    body.textContent = nextPromptText;
+
+    card.appendChild(title);
+    card.appendChild(body);
+    target.appendChild(card);
+  }
+
+  private isMountHostHidden(node: HTMLElement): boolean {
+    if (node.classList.contains('dt-hidden')) return true;
+    if (node.hasAttribute('hidden')) return true;
+    if (node.getAttribute('aria-hidden') === 'true') return true;
+    const style = window.getComputedStyle(node);
+    return style.display === 'none' || style.visibility === 'hidden';
+  }
+
+  private resolveMountHost(responseEl: HTMLElement): HTMLElement {
+    const candidates = Array.from(responseEl.querySelectorAll(this.mountHostSelector)) as HTMLElement[];
+    const visibleCandidate = candidates.find((node) => !this.isMountHostHidden(node));
+    const host = visibleCandidate ?? candidates[0] ?? responseEl;
+    if (host.classList.contains('dt-hidden')) {
+      host.classList.remove('dt-hidden');
+    }
+    return host;
+  }
+
   private sanitizeSpecialText(text: string): string {
     const { continueMarker, finishMarker } = this.store.config.markers;
     const out: string[] = [];
     let inAutoBlock = false;
     let inClarifyBlock = false;
+    let inRouterBlock = false;
+    let inNextPromptBlock = false;
 
     for (const line of text.split(/\r?\n/)) {
       const trimmed = line.trim();
 
-      if (trimmed === '[CLARIFY]') {
-        inClarifyBlock = true;
+      const clarifyBoundary = parseTagBoundary(trimmed, CLARIFY_TAG, inClarifyBlock);
+      if (clarifyBoundary.isMarker) {
+        inClarifyBlock = clarifyBoundary.nextInBlock;
         continue;
       }
       if (inClarifyBlock) {
-        if (trimmed === '[/CLARIFY]') inClarifyBlock = false;
+        continue;
+      }
+
+      const routerBoundary = parseTagBoundary(trimmed, ROUTER_TAG, inRouterBlock);
+      if (routerBoundary.isMarker) {
+        inRouterBlock = routerBoundary.nextInBlock;
+        continue;
+      }
+      if (inRouterBlock) {
+        continue;
+      }
+
+      const nextPromptBoundary = parseTagBoundary(trimmed, NEXT_PROMPT_TAG, inNextPromptBlock);
+      if (nextPromptBoundary.isMarker) {
+        inNextPromptBlock = nextPromptBoundary.nextInBlock;
+        continue;
+      }
+      if (inNextPromptBlock) {
         continue;
       }
 
@@ -176,7 +278,7 @@ export class DOMBeautifier {
       if (trimmed.includes('[NEXT_PROMPT:')) continue;
       if (/^🧭\s*AUTO\s*(决策|Decision)[:：]/.test(trimmed)) continue;
       if (/^AUTO\s*(决策|Decision)[:：]/.test(trimmed)) continue;
-      if (/^(进入深度模式|Entering deep mode)[。!！…\s]*$/.test(trimmed)) continue;
+      if (/^(进入深度模式|进入问卷模式|Entering deep mode|Entering clarification mode)[。!！…\s]*$/.test(trimmed)) continue;
       if (parseIntentJson(trimmed)) continue;
 
       let clean = line;
@@ -192,9 +294,11 @@ export class DOMBeautifier {
     const dtPattern = new RegExp(this.store.config.markers.dtMarkerPattern);
     this.adapter.getUserBubbles().forEach((qt) => {
       const el = qt as HTMLElement;
-      if (el.dataset.dtDone === '1') return;
-
       const fullText = el.innerText;
+      const sig = this.getNodeSignature(fullText);
+      if (el.dataset.dtDone === '1' && el.dataset.dtSig === sig) return;
+      el.dataset.dtSig = sig;
+
       const hasAutoDecisionMarker = fullText.includes('[G-Master AUTO 决策]') || fullText.includes('[G-Master AUTO Decision]');
       const hasMemoryInjection = fullText.includes('【用户设定的全局记忆') || fullText.includes('[User Pinned Memories');
       const m = fullText.match(dtPattern);
@@ -325,71 +429,212 @@ export class DOMBeautifier {
   }
 
   private processResponseMarkers(): void {
-    // 不再完全跳过 isGenerating，而是在生成中也进行基本清理（隐藏 JSON 行等）
     const isStillGenerating = this.store.isGenerating;
+    const responseMessages = Array.from(this.adapter.getResponseMessages()) as HTMLElement[];
+    const activeGeneratingMsg = isStillGenerating && responseMessages.length > 0
+      ? responseMessages[responseMessages.length - 1]
+      : null;
 
     const { continueMarker, finishMarker } = this.store.config.markers;
 
-    this.adapter.getResponseMessages().forEach((msg) => {
-      const el = msg as HTMLElement;
-      if (el.dataset.dtDone === '1') return;
-
+    responseMessages.forEach((el) => {
       const text = el.innerText;
-      const hasContinue = text.includes(continueMarker);
-      const hasFinish = text.includes(finishMarker);
-      const hasNextPrompt = text.includes('[NEXT_PROMPT:');
-      const intentInfo = text
-        .split(/\r?\n/)
-        .map((line) => parseIntentJson(line))
-        .find((v): v is { route: 'direct' | 'deep'; deep_loops: number; needs_web: boolean; needs_files: boolean; needs_code: boolean; summary: string } => Boolean(v));
+      const sig = this.getNodeSignature(text);
+      if (el.dataset.dtDone === '1' && el.dataset.dtSig === sig) return;
+      el.dataset.dtSig = sig;
 
-      if (!hasContinue && !hasFinish && !hasNextPrompt && !intentInfo) return;
+      const isActiveGeneratingMessage = activeGeneratingMsg === el;
+      const hasContinue = text.includes(continueMarker) || text.includes('[ACTION: THINK_MORE]');
+      const hasFinish = text.includes(finishMarker) || text.includes('[ACTION: GOAL_REACHED]');
+      const hasNextPrompt = text.includes('[NEXT_PROMPT');
+      const hasClarify = text.includes('[CLARIFY]');
+      const hasRouter = /<router_config>|<\/router_config>/i.test(text);
+      const intentInfo = parseIntentJson(text);
+      const nextPromptText = this.parseNextPromptText(text);
+      const hasExistingUi = Boolean(el.querySelector('.dt-resp-badge, .dt-next-prompt-card'));
+
+      if (!hasContinue && !hasFinish && !hasNextPrompt && !intentInfo && !hasClarify && !hasRouter && !hasExistingUi) return;
 
       // 移除旧 badge
-      el.querySelectorAll('.dt-resp-badge').forEach((b) => b.remove());
+      const oldBadge = el.querySelector('.dt-resp-badge') as HTMLElement | null;
 
+      const upsertBadge = (className: string, textContent: string): void => {
+        if (oldBadge) {
+          if (oldBadge.className === className && oldBadge.textContent === textContent) {
+            return;
+          }
+          oldBadge.className = className;
+          oldBadge.textContent = textContent;
+          return;
+        }
+        const badge = document.createElement('div');
+        badge.className = className;
+        badge.textContent = textContent;
+        el.appendChild(badge);
+      };
+
+      // 生成中仅更新状态徽章，避免高频改写 DOM 触发观察器回流。
+      if (isActiveGeneratingMessage) {
+        if (hasContinue) {
+          const displayLoop = Math.max(1, this.store.currentLoop);
+          upsertBadge(
+            'dt-resp-badge dt-badge-think',
+            this.store.config.language === 'en'
+              ? `🔄 Continuing deep think · Round ${displayLoop}`
+              : `🔄 继续深入思考 · 第 ${displayLoop} 轮`,
+          );
+        } else if (hasFinish) {
+          upsertBadge(
+            'dt-resp-badge dt-badge-done',
+            this.store.config.language === 'en'
+              ? '✅ Deep think complete · Generating final summary...'
+              : '✅ 深度思考完成 · 正在生成最终总结...',
+          );
+        } else if (intentInfo) {
+          const textContent = this.store.config.language === 'en'
+            ? intentInfo.route === 'deep'
+              ? `🧭 AUTO Decision: Entering deep mode${intentInfo.summary ? ` · ${intentInfo.summary}` : ''}`
+              : intentInfo.route === 'clarify'
+                ? `🧭 AUTO Decision: Entering clarification mode${intentInfo.summary ? ` · ${intentInfo.summary}` : ''}`
+                : `🧭 AUTO Decision: Direct answer${intentInfo.summary ? ` · ${intentInfo.summary}` : ''}`
+            : intentInfo.route === 'deep'
+              ? `🧭 AUTO 决策：进入深度模式${intentInfo.summary ? ` · ${intentInfo.summary}` : ''}`
+              : intentInfo.route === 'clarify'
+                ? `🧭 AUTO 决策：进入问卷模式${intentInfo.summary ? ` · ${intentInfo.summary}` : ''}`
+                : `🧭 AUTO 决策：直接回答${intentInfo.summary ? ` · ${intentInfo.summary}` : ''}`;
+
+          upsertBadge('dt-resp-badge dt-badge-final', textContent);
+        }
+
+        el.dataset.dtDone = '0';
+        return;
+      }
+
+      if (oldBadge) oldBadge.remove();
+
+      // 如果还在生成中，为了不破坏 DOM 文本打断流读取，我们暂不直接清理文本节点或加上隐藏 class。
+      // 只追加 Badge 提示状态。等完成生成后再执行真正的“净化”操作。
       // 遍历文本节点，删除标记文本
       const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
       const textNodes: Text[] = [];
       while (walker.nextNode()) textNodes.push(walker.currentNode as Text);
 
+      let inClarifyGlobal = false;
+      let inRouterGlobal = false;
+      let inNextPromptGlobal = false;
+
       for (const node of textNodes) {
-        if ((node as unknown as HTMLElement).closest?.('.dt-resp-badge')) continue;
-        const lines = (node.textContent ?? '').split(/\r?\n/);
+        if ((node as unknown as HTMLElement).closest?.('.dt-resp-badge') || (node as unknown as HTMLElement).closest?.('.dt-react-clarify-mount')) continue;
+
+        const originalNodeText = node.textContent ?? '';
+        let nodeText = originalNodeText;
+
+          // 处理整块混在一个节点里的情况
+          nodeText = removeTaggedBlock(nodeText, CLARIFY_TAG);
+          nodeText = removeTaggedBlock(nodeText, ROUTER_TAG);
+          nodeText = removeTaggedBlock(nodeText, NEXT_PROMPT_TAG);
+
+        const lines = nodeText.split(/\r?\n/);
         let t = lines
           .filter((line) => {
             const trimmed = line.trim();
             if (!trimmed) return true;
+
+            // 跨节点/跨段落的问卷过滤
+            const clarifyBoundary = parseTagBoundary(trimmed, CLARIFY_TAG, inClarifyGlobal);
+            if (clarifyBoundary.isMarker) {
+              inClarifyGlobal = clarifyBoundary.nextInBlock;
+              return false;
+            }
+
+            const routerBoundary = parseTagBoundary(trimmed, ROUTER_TAG, inRouterGlobal);
+            if (routerBoundary.isMarker) {
+              inRouterGlobal = routerBoundary.nextInBlock;
+              return false;
+            }
+
+            const nextPromptBoundary = parseTagBoundary(trimmed, NEXT_PROMPT_TAG, inNextPromptGlobal);
+            if (nextPromptBoundary.isMarker) {
+              inNextPromptGlobal = nextPromptBoundary.nextInBlock;
+              return false;
+            }
+
+            if (inClarifyGlobal || inRouterGlobal || inNextPromptGlobal) {
+              return false;
+            }
+
+            if (trimmed.includes('[NEXT_PROMPT:')) return false;
+
             // 过滤意图 JSON 行
-            if (parseIntentJson(trimmed)) return false;
+            if (parseIntentJson(trimmed) || (trimmed.startsWith('{') && trimmed.includes('"route"'))) return false;
             // 过滤 AUTO 决策标签行
             if (/^🧭\s*AUTO\s*(决策|Decision)[:：]/.test(trimmed)) return false;
             if (/^AUTO\s*(决策|Decision)[:：]/.test(trimmed)) return false;
-            // 过滤进入深度模式的提示文字
-            if (/^(进入深度模式|Entering deep mode)/.test(trimmed)) return false;
+            // 过滤进入深度或问卷模式的提示文字
+            if (/^(进入深度模式|进入问卷模式|Entering deep mode|Entering clarification mode)/.test(trimmed)) return false;
             // 过滤 "进入深度模式执行搜索与分析" 等变体
-            if (/(深度模式|deep mode).*[。!！…]*$/.test(trimmed) && trimmed.length < 50) return false;
+            if (/(深度模式|问卷模式|deep mode|clarification mode).*[。!！…]*$/.test(trimmed) && trimmed.length < 50) return false;
             return true;
           })
           .join('\n');
-        let changed = false;
-        if (t.includes(continueMarker)) { t = t.replace(continueMarker, ''); changed = true; }
-        if (t.includes(finishMarker)) { t = t.replace(finishMarker, ''); changed = true; }
-        if (lines.length !== t.split(/\r?\n/).length) changed = true;
+        if (t.includes(continueMarker)) { t = t.split(continueMarker).join(''); }
+        if (t.includes(finishMarker)) { t = t.split(finishMarker).join(''); }
+
+        const changed = t !== originalNodeText;
         if (changed) node.textContent = t;
       }
 
       // 隐藏 NEXT_PROMPT 段落和其他标记
-      el.querySelectorAll('p, li, span').forEach((child) => {
+      let hidingClarifyTemp = false;
+      let hidingRouterTemp = false;
+      let hidingNextPromptTemp = false;
+      el.querySelectorAll('p, li, span, pre, code').forEach((child) => {
         if ((child as HTMLElement).closest?.('.dt-resp-badge')) return;
         const ct = (child.textContent ?? '').trim();
+
+        const clarifyBoundary = parseTagBoundary(ct, CLARIFY_TAG, hidingClarifyTemp);
+        if (clarifyBoundary.isMarker) {
+          hidingClarifyTemp = clarifyBoundary.nextInBlock;
+          child.classList.add('dt-hidden');
+          return;
+        }
+
+        if (hidingClarifyTemp) {
+          child.classList.add('dt-hidden');
+          return;
+        }
+
+        const routerBoundary = parseTagBoundary(ct, ROUTER_TAG, hidingRouterTemp);
+        if (routerBoundary.isMarker) {
+          hidingRouterTemp = routerBoundary.nextInBlock;
+          child.classList.add('dt-hidden');
+          return;
+        }
+
+        if (hidingRouterTemp) {
+          child.classList.add('dt-hidden');
+          return;
+        }
+
+        const nextPromptBoundary = parseTagBoundary(ct, NEXT_PROMPT_TAG, hidingNextPromptTemp);
+        if (nextPromptBoundary.isMarker) {
+          hidingNextPromptTemp = nextPromptBoundary.nextInBlock;
+          child.classList.add('dt-hidden');
+          return;
+        }
+
+        if (hidingNextPromptTemp) {
+          child.classList.add('dt-hidden');
+          return;
+        }
+
         if (ct.includes('[NEXT_PROMPT:')) {
           child.classList.add('dt-hidden');
         }
-        if (/^(进入深度模式|Entering deep mode)/.test(ct) && ct.length < 50) {
+        if (/^(进入深度模式|进入问卷模式|Entering deep mode|Entering clarification mode)/.test(ct) && ct.length < 50) {
           child.classList.add('dt-hidden');
         }
-        if (/(深度模式|deep mode).*[搜索|分析|综合|search|analy|synthe]/.test(ct) && ct.length < 60) {
+        if (/(深度模式|问卷模式|deep mode|clarification mode).*[搜索|分析|综合|问题|构思|search|analy|synthe|question]/.test(ct) && ct.length < 60) {
           child.classList.add('dt-hidden');
         }
         if (/^🧭\s*AUTO\s*(决策|Decision)[:：]/.test(ct)) {
@@ -398,69 +643,111 @@ export class DOMBeautifier {
         if (/^AUTO\s*(决策|Decision)[:：]/.test(ct)) {
           child.classList.add('dt-hidden');
         }
-        // 隐藏意图 JSON 行显示在 p/span 中的情况
-        if (parseIntentJson(ct)) {
+        // 隐藏意图 JSON 行显示在 p/span/pre/code 中的情况
+        if (parseIntentJson(ct) || (ct.startsWith('{') && ct.includes('"route"'))) {
           child.classList.add('dt-hidden');
         }
       });
 
-      // 移除末尾空白段落
-      const children = Array.from(el.children);
-      for (let i = children.length - 1; i >= 0; i--) {
-        const c = children[i] as HTMLElement;
-        if (c.classList?.contains('dt-resp-badge')) continue;
-        if (c.textContent?.trim() === '' && !c.querySelector('img,table,pre,code')) {
-          c.classList.add('dt-hidden');
-        } else {
-          break;
+      // 移除末尾及中间死去的空段落
+      Array.from(el.children).forEach((c) => {
+        const child = c as HTMLElement;
+        if (child.classList?.contains('dt-resp-badge') || child.classList?.contains('dt-react-clarify-mount')) return;
+        if (child.textContent?.trim() === '' && !child.querySelector('img,table,pre,code')) {
+          child.classList.add('dt-hidden');
         }
+      });
+
+      // 在生成完毕后（!isStillGenerating），提取内容并做最终处理
+      let hidingClarify = false;
+      let hidingRouter = false;
+      let hidingNextPrompt = false;
+      el.querySelectorAll('p, li, span, pre, code').forEach((child) => {
+        if ((child as HTMLElement).closest?.('.dt-resp-badge') || (child as HTMLElement).closest?.('.dt-react-clarify-mount')) return;
+        const ct = (child.textContent ?? '').trim();
+
+        const clarifyBoundary = parseTagBoundary(ct, CLARIFY_TAG, hidingClarify);
+        if (clarifyBoundary.isMarker) {
+          hidingClarify = clarifyBoundary.nextInBlock;
+          child.classList.add('dt-hidden');
+          return;
+        }
+
+        if (hidingClarify) {
+          child.classList.add('dt-hidden');
+          return;
+        }
+
+        const routerBoundary = parseTagBoundary(ct, ROUTER_TAG, hidingRouter);
+        if (routerBoundary.isMarker) {
+          hidingRouter = routerBoundary.nextInBlock;
+          child.classList.add('dt-hidden');
+          return;
+        }
+
+        if (hidingRouter) {
+          child.classList.add('dt-hidden');
+          return;
+        }
+
+        const nextPromptBoundary = parseTagBoundary(ct, NEXT_PROMPT_TAG, hidingNextPrompt);
+        if (nextPromptBoundary.isMarker) {
+          hidingNextPrompt = nextPromptBoundary.nextInBlock;
+          child.classList.add('dt-hidden');
+          return;
+        }
+
+        if (hidingNextPrompt) {
+          child.classList.add('dt-hidden');
+        }
+      });
+
+      // 获取整个回答并解析问卷，插入挂载点
+      const blockQuestions = parseClarifyBlock(text);
+      const mountHost = this.resolveMountHost(el);
+      if (blockQuestions && blockQuestions.length > 0 && !mountHost.querySelector('.dt-react-clarify-mount')) {
+        const mount = document.createElement('div');
+        mount.className = 'dt-react-clarify-mount';
+        mount.dataset.clarifyJson = JSON.stringify(blockQuestions);
+        // Insert inside el, but before any badges
+        mountHost.appendChild(mount);
       }
 
-      // 在生成完毕后（!isStillGenerating），彻底隐藏或过滤 [CLARIFY] 块
-      if (!isStillGenerating) {
-        let hidingClarify = false;
-        el.querySelectorAll('p, li, span, pre, code').forEach((child) => {
-          if ((child as HTMLElement).closest?.('.dt-resp-badge')) return;
-          const ct = (child.textContent ?? '').trim();
+      this.upsertNextPromptCard(mountHost, nextPromptText);
 
-          if (ct.includes('[CLARIFY]')) hidingClarify = true;
-
-          if (hidingClarify) {
-            child.classList.add('dt-hidden');
-            if (ct.includes('[/CLARIFY]')) hidingClarify = false;
-          }
-        });
-
-        // 原本的 注入可视化徽章 逻辑
-        const badge = document.createElement('div');
-        if (hasContinue) {
-          badge.className = 'dt-resp-badge dt-badge-think';
-          badge.textContent = this.store.config.language === 'en'
-            ? `🔄 Continuing deep think · Round ${this.store.currentLoop}`
-            : `🔄 继续深入思考 · 第 ${this.store.currentLoop} 轮`;
-          el.appendChild(badge);
-        } else if (hasFinish) {
-          badge.className = 'dt-resp-badge dt-badge-done';
-          badge.textContent = this.store.config.language === 'en'
+      // 原本的 注入可视化徽章 逻辑
+      if (hasContinue) {
+        const displayLoop = Math.max(1, this.store.currentLoop);
+        upsertBadge(
+          'dt-resp-badge dt-badge-think',
+          this.store.config.language === 'en'
+            ? `🔄 Continuing deep think · Round ${displayLoop}`
+            : `🔄 继续深入思考 · 第 ${displayLoop} 轮`,
+        );
+      } else if (hasFinish) {
+        upsertBadge(
+          'dt-resp-badge dt-badge-done',
+          this.store.config.language === 'en'
             ? '✅ Deep think complete · Generating final summary...'
-            : '✅ 深度思考完成 · 正在生成最终总结...';
-          el.appendChild(badge);
-        } else if (intentInfo) {
-          badge.className = 'dt-resp-badge dt-badge-final';
-          if (this.store.config.language === 'en') {
-            badge.textContent = intentInfo.route === 'deep'
-              ? `🧭 AUTO Decision: Entering deep mode${intentInfo.summary ? ` · ${intentInfo.summary}` : ''}`
-              : `🧭 AUTO Decision: Direct answer${intentInfo.summary ? ` · ${intentInfo.summary}` : ''}`;
-          } else {
-            badge.textContent = intentInfo.route === 'deep'
-              ? `🧭 AUTO 决策：进入深度模式${intentInfo.summary ? ` · ${intentInfo.summary}` : ''}`
+            : '✅ 深度思考完成 · 正在生成最终总结...',
+        );
+      } else if (intentInfo) {
+        const textContent = this.store.config.language === 'en'
+          ? intentInfo.route === 'deep'
+            ? `🧭 AUTO Decision: Entering deep mode${intentInfo.summary ? ` · ${intentInfo.summary}` : ''}`
+            : intentInfo.route === 'clarify'
+              ? `🧭 AUTO Decision: Entering clarification mode${intentInfo.summary ? ` · ${intentInfo.summary}` : ''}`
+              : `🧭 AUTO Decision: Direct answer${intentInfo.summary ? ` · ${intentInfo.summary}` : ''}`
+          : intentInfo.route === 'deep'
+            ? `🧭 AUTO 决策：进入深度模式${intentInfo.summary ? ` · ${intentInfo.summary}` : ''}`
+            : intentInfo.route === 'clarify'
+              ? `🧭 AUTO 决策：进入问卷模式${intentInfo.summary ? ` · ${intentInfo.summary}` : ''}`
               : `🧭 AUTO 决策：直接回答${intentInfo.summary ? ` · ${intentInfo.summary}` : ''}`;
-          }
-          el.appendChild(badge);
-        }
+
+        upsertBadge('dt-resp-badge dt-badge-final', textContent);
       }
 
-      el.dataset.dtDone = isStillGenerating ? '0' : '1';
+      el.dataset.dtDone = '1';
     });
   }
 }

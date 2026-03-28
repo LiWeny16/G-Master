@@ -164,7 +164,7 @@ export function useInlineToggle(
         if (phase === 'clarifying') {
           txt.textContent = store.config.language === 'en' ? 'Waiting for input...' : '等待补充信息…';
         } else {
-          txt.textContent = summarizing ? i18n.t('toggle_summarizing') : i18n.t('toggle_thinking', { loop });
+          txt.textContent = summarizing ? i18n.t('toggle_summarizing') : i18n.t('toggle_thinking', { loop: Math.max(1, loop) });
         }
       } else if (isActive) {
         /* 已开启但待命：实心点，高亮色 */
@@ -298,9 +298,10 @@ export function useInlineToggle(
         e.preventDefault();
         e.stopPropagation();
 
-        // 只有正在执行时才触发 abort
+        // 运行中点击：只中断，不切换模式
         if (store.enginePhase === 'thinking' || store.enginePhase === 'summarizing' || store.enginePhase === 'clarifying') {
           abortRef.current();
+          return;
         }
 
         // 状态循环：off -> on -> auto -> off

@@ -4,7 +4,7 @@ import { invokeBackground } from '../services/message-bus';
 import { StateStore } from '../stores/state-store';
 import { ParsedMarkers } from '../types';
 import { parseToolCalls } from './tool-call-parser';
-import { parseClarifyBlock } from './parsers';
+import { parseClarifyBlock, extractTaggedPayload, NEXT_PROMPT_TAG } from './parsers';
 
 export class DeepThinkEngine {
   constructor(
@@ -15,11 +15,29 @@ export class DeepThinkEngine {
   // === 解析 Action Markers ===
   parseActionMarkers(text: string): ParsedMarkers {
     const { markers } = this.store.config;
-    const hasContinue = text.includes(markers.continueMarker);
-    const hasFinish = text.includes(markers.finishMarker);
-    const re = new RegExp(markers.nextPromptPattern);
-    const m = text.match(re);
-    return { hasContinue, hasFinish, nextPrompt: m?.[1]?.trim() ?? null };
+    const hasContinue = text.includes(markers.continueMarker) || text.includes('[ACTION: THINK_MORE]');
+    const hasFinish = text.includes(markers.finishMarker) || text.includes('[ACTION: GOAL_REACHED]');
+    
+    // 优先尝试使用标准统一的格式 [NEXT_PROMPT]...[NEXT_PROMPT]
+    let nextPrompt = extractTaggedPayload(text, NEXT_PROMPT_TAG);
+
+    if (!nextPrompt) {
+      // 回退：尝试从自适应/旧的正则匹配
+      const re = new RegExp(markers.nextPromptPattern);
+      const m = text.match(re);
+      if (m && m[1]) {
+        nextPrompt = m[1].trim();
+      } else {
+        // 再硬回退：旧版硬编码模式
+        const oldRe = /\[NEXT_PROMPT:\s*([\s\S]*?)\]/;
+        const m2 = text.match(oldRe);
+        if (m2 && m2[1]) {
+          nextPrompt = m2[1].trim();
+        }
+      }
+    }
+    
+    return { hasContinue, hasFinish, nextPrompt: nextPrompt ?? null };
   }
 
   // === 获取当前轮次对应的审查视角 ===
@@ -94,6 +112,17 @@ export class DeepThinkEngine {
     );
   }
 
+  buildClarifyLimitPrompt(): string {
+    const { markers } = this.store.config;
+    return this.store.config.language === 'en'
+      ? `[System Constraint]: Clarification round limit reached in this user turn. Do NOT output [CLARIFY] anymore.\n` +
+        `Proceed with explicit assumptions based on available information and keep reasoning anchored to: "${this.store.originalQuestion}".\n` +
+        `You MUST end with either ${markers.continueMarker} + [NEXT_PROMPT: ...] or ${markers.finishMarker}.`
+      : `【系统约束】本轮对话的澄清问卷次数已达上限，请不要再输出 [CLARIFY]。\n` +
+        `请基于现有信息明确写出你的假设，并围绕原问题继续推理："${this.store.originalQuestion}"。\n` +
+        `你的回复末尾必须包含 ${markers.continueMarker} + [NEXT_PROMPT: ...]，或 ${markers.finishMarker}。`;
+  }
+
   // === 发送带 DT 标签的 Prompt ===
   async sendPrompt(text: string, dtLabel?: string): Promise<void> {
     if (this.store.userAborted) return;
@@ -124,7 +153,23 @@ export class DeepThinkEngine {
     // === 检测澄清问卷块（ON 模式中 DeepThinkEngine 也可能产生 [CLARIFY]）===
     const clarifyQuestions = parseClarifyBlock(responseText);
     if (clarifyQuestions && clarifyQuestions.length > 0) {
+      if (!this.store.tryEnterClarifyRound()) {
+        this.store.incrementLoop();
+        if (this.store.currentLoop > this.getEffectiveMaxLoops()) {
+          runInAction(() => {
+            this.store.isSummarizing = true;
+          });
+          const sumLabelMax = this.store.config.language === 'en' ? '📋 Generate Final Summary (Limit Reached)' : '📋 生成最终总结（达到上限）';
+          await this.sendPrompt(this.buildSummaryPrompt(), sumLabelMax);
+          return;
+        }
+        const limitLabel = this.store.config.language === 'en' ? '⚠️ Clarify Limit Reached' : '⚠️ 澄清次数达到上限';
+        await this.sendPrompt(this.buildClarifyLimitPrompt(), limitLabel);
+        return;
+      }
+
       runInAction(() => {
+        this.store.currentLoop = Math.max(1, this.store.currentLoop);
         this.store.userWorkflowPhase = 'clarify';
         this.store.clarifyQuestions = clarifyQuestions;
       });
@@ -222,6 +267,15 @@ export class DeepThinkEngine {
       const sumLabel = this.store.config.language === 'en' ? '📋 Generate Final Summary' : '📋 生成最终总结';
       this.sendPrompt(this.buildSummaryPrompt(), sumLabel);
     } else {
+      this.store.incrementLoop();
+      if (this.store.currentLoop > this.getEffectiveMaxLoops()) {
+        runInAction(() => {
+          this.store.isSummarizing = true;
+        });
+        const sumLabelMax = this.store.config.language === 'en' ? '📋 Generate Final Summary (Limit Reached)' : '📋 生成最终总结（达到上限）';
+        this.sendPrompt(this.buildSummaryPrompt(), sumLabelMax);
+        return;
+      }
       const corrLabel = this.store.config.language === 'en' ? '⚠️ System Correction' : '⚠️ 系统纠偏';
       this.sendPrompt(this.buildCorrectionPrompt(), corrLabel);
     }
@@ -264,7 +318,6 @@ export class DeepThinkEngine {
     runInAction(() => {
       this.store.userAborted = true;
     });
-    this.store.setAgentMode('off');
     this.store.resetState();
   }
 }

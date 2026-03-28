@@ -10,6 +10,7 @@ import FloatingBall from '../components/FloatingBall';
 import Panel from '../components/Panel';
 import ClarifyModal from '../components/ClarifyModal';
 import { useInlineToggle } from './useInlineToggle';
+import { GeminiConversationBulkDeleteController } from './gemini-bulk-delete';
 import i18n from '../i18n';
 
 const store = new StateStore();
@@ -17,6 +18,7 @@ const adapter = new GeminiAdapter();
 const engine = new DeepThinkEngine(adapter, store);
 const beautifier = new DOMBeautifier(adapter, store);
 const orchestrator = new AgentOrchestrator(adapter, store, engine);
+const bulkDeleteController = new GeminiConversationBulkDeleteController();
 
 /**
  * 防止 handleInterceptSend 重入的全局锁。
@@ -42,6 +44,9 @@ const ContentApp: React.FC = observer(() => {
     domObserver.start();
     observerRef.current = domObserver;
 
+    // 对话侧边栏多选批量删除增强
+    bulkDeleteController.start();
+
     // 拦截 Enter 键发送
     const handleKeydown = (e: KeyboardEvent) => {
       if (e.key === 'Enter' && !e.shiftKey && document.activeElement?.closest('.ql-editor')) {
@@ -56,8 +61,12 @@ const ContentApp: React.FC = observer(() => {
         handleInterceptSend(e);
       }
       // 拦截停止按钮
-      if (target.closest('.send-button.stop') && store.isAgentEnabled) {
-        engine.abort();
+      const stopBtn = target.closest('.send-button.stop') as HTMLElement | null;
+      if (stopBtn && store.isAgentEnabled) {
+        const isAutoStop = stopBtn.getAttribute('data-dt-auto-stop') === '1';
+        if (!isAutoStop) {
+          engine.abort();
+        }
       }
     };
 
@@ -67,6 +76,7 @@ const ContentApp: React.FC = observer(() => {
     return () => {
       document.removeEventListener('keydown', handleKeydown, true);
       document.removeEventListener('click', handleClick, true);
+      bulkDeleteController.stop();
       domObserver.stop();
     };
   }, []);

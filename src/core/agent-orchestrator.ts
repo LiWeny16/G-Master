@@ -10,7 +10,7 @@ import { runInAction } from 'mobx';
 export type UserWorkflowPhase = 'none' | 'intent' | 'deep' | 'clarify';
 
 export interface ParsedIntent {
-  route: 'direct' | 'deep';
+  route: 'direct' | 'deep' | 'clarify';
   deep_loops: number;
   needs_web: boolean;
   needs_files: boolean;
@@ -99,7 +99,7 @@ export class AgentOrchestrator {
     await this.adapter.insertTextAndSend(body);
   }
 
-  /** 意图回复完成后：检测 [CLARIFY] → 显示问卷；否则 direct 结束 / deep 起循环。 */
+  /** 意图回复完成后：检测 [CLARIFY] 问卷块 → 显示问卷；否则 direct 结束 / deep 起循环。 */
   async finishIntentAndStartDeep(intentResponseText: string): Promise<void> {
     if (!this.store.isAgentEnabled || this.store.userAborted) return;
     if (this.store.userWorkflowPhase !== 'intent') return;
@@ -119,10 +119,43 @@ export class AgentOrchestrator {
       this.store.lastIntentSummary = parsed?.summary ?? '';
     });
 
-    // === 检测 [CLARIFY] 块 ===
+    // === 检测 route ===
+    // 如果路由器指定了 clarify，则它并没有生成具体问卷，我们需要通过 PRO/THINK 主动发起一次问卷生成。
+    if (parsed.route === 'clarify') {
+      runInAction(() => {
+        // 先设为 deep，用大模型生成问题，大模型发回来的内容带有 [CLARIFY] 包裹块后再拦截显示
+        this.store.userWorkflowPhase = 'deep';
+        this.store.currentLoop = 1;
+        this.store.isSummarizing = false;
+        this.store.plannedDeepLoops = 1; // 仅一次循环用于生成问卷
+      });
+
+      const loopModel = this.loopModelToGeminiModel(this.store.config.loopModel);
+      await this.switchModel(loopModel);
+
+      const clarifyPrompt = this.store.config.language === 'en'
+        ? `[AUTO Decision] The user query misses critical information. You need to ask clarifying questions.\n\nPlease strictly output a [CLARIFY] wrapped block with up to 3 questions (each must have options). Return ONLY the [CLARIFY] block and nothing else.\nFormat:\n[CLARIFY]\n[{"question":"Question text","options":["Option A","Option B"]}]\n[CLARIFY]\n\nUser Query: ${this.store.originalQuestion}`
+        : `[AUTO 决策] 用户问题缺少关键条件。你需要向用户追问关键信息。\n\n请严格输出一个 [CLARIFY] 包裹块，包含最多 3 个问题，每个问题必须有选项供用户选择。除了 [CLARIFY] 块外，不要输出其他任何内容！\n格式示例：\n[CLARIFY]\n[{"question":"问题文本","options":["选项A","选项B"]}]\n[CLARIFY]\n\n用户原始问题：${this.store.originalQuestion}`;
+
+      const uiTitlePrefix = this.store.config.language === 'en'
+        ? `🧠 Generating Clarification Questions...`
+        : `🧠 构思澄清问卷...`;
+
+      await this.engine.sendPrompt(clarifyPrompt, uiTitlePrefix);
+      return;
+    }
+
+    // 兼容旧格式与新格式的 [CLARIFY] 问卷块
     const clarifyQuestions = parseClarifyBlock(intentResponseText);
     if (clarifyQuestions && clarifyQuestions.length > 0) {
+      if (!this.store.tryEnterClarifyRound()) {
+        await this._startDeepOrFinish(parsed);
+        return;
+      }
+
       runInAction(() => {
+        // 问卷也计入轮次：intent 直接产出问卷时至少占用第 1 轮。
+        this.store.currentLoop = Math.max(1, this.store.currentLoop);
         this.store.userWorkflowPhase = 'clarify';
         this.store.clarifyQuestions = clarifyQuestions;
         // 保留 parsed 供 resumeAfterClarify 使用
@@ -132,7 +165,7 @@ export class AgentOrchestrator {
       return; // 等待用户在 UI 中回答
     }
 
-    // 没有 [CLARIFY]，走原有逻辑
+    // 没有 [CLARIFY] 问卷块，走原有逻辑
     await this._startDeepOrFinish(parsed);
   }
 
@@ -148,7 +181,13 @@ export class AgentOrchestrator {
     const prefixZh = '用户已补充以下关键信息，请基于这些信息继续完成回答：\n\n';
     const prefixEn = 'The user has provided the following supplementary information. Please continue with the response based on these inputs:\n\n';
     const prefix = this.store.config.language === 'en' ? prefixEn : prefixZh;
-    const supplementText = prefix + qaLines;
+
+    const { markers } = this.store.config;
+    const loopConstraintEn = `\n\n[System Constraint]: You are still in a deep thinking loop. You MUST end your response with either ${markers.continueMarker} + [NEXT_PROMPT: ...] to continue, or ${markers.finishMarker} to conclude and output the final summary.`;
+    const loopConstraintZh = `\n\n【系统约束】当前仍在深度思考循环中！你的回复末尾必须包含 ${markers.continueMarker} + [NEXT_PROMPT: ...] 继续循环，或使用 ${markers.finishMarker} 结束并准备输出最终总结。`;
+    const loopConstraint = this.store.config.language === 'en' ? loopConstraintEn : loopConstraintZh;
+
+    const supplementText = prefix + qaLines + loopConstraint;
 
     // 更新原始问题（追加答案上下文）
     runInAction(() => {
@@ -165,6 +204,8 @@ export class AgentOrchestrator {
       // 走到这里说明是在深度思考阶段（ON模式或AUTO的deep模式）触发的问卷
       runInAction(() => {
         this.store.userWorkflowPhase = 'deep';
+        // 问卷提交后继续深度思考，推进到下一轮。
+        this.store.currentLoop = Math.max(1, this.store.currentLoop + 1);
       });
       const uiLabel = this.store.config.language === 'en' ? '📝 Supplementary Info' : '📝 用户补充信息';
       await this.engine.sendPrompt(supplementText, uiLabel);
@@ -193,7 +234,11 @@ export class AgentOrchestrator {
       return;
     }
 
-    const plannedLoops = Math.max(1, Math.min(parsed.deep_loops, this.store.config.maxLoops));
+    const startLoop = supplementalText
+      ? Math.max(1, this.store.currentLoop + 1)
+      : 1;
+    const requestedLoops = Math.max(1, Math.min(parsed.deep_loops, this.store.config.maxLoops));
+    const plannedLoops = Math.max(startLoop, requestedLoops);
 
     runInAction(() => {
       this.store.plannedDeepLoops = plannedLoops;
@@ -204,7 +249,7 @@ export class AgentOrchestrator {
 
     runInAction(() => {
       this.store.userWorkflowPhase = 'deep';
-      this.store.currentLoop = 1;
+      this.store.currentLoop = startLoop;
       this.store.isSummarizing = false;
     });
 

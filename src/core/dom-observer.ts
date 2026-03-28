@@ -7,13 +7,15 @@ import { DOMBeautifier } from './dom-beautifier';
 export class DOMObserver {
   private observer: MutationObserver | null = null;
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private intentHandoffInProgress = false;
 
   // Watchdog variables
   private watchdogTimer: ReturnType<typeof setInterval> | null = null;
   private lastObservedTextLength: number = 0;
   private watchdogIdleTicks: number = 0;
-  // Maximum idle time: 30 seconds (15 ticks of 2 seconds)
-  private readonly MAX_IDLE_TICKS = 15;
+  private readonly WATCHDOG_ENABLED = false;
+  // Maximum idle time: 6 seconds (3 ticks of 2 seconds)
+  private readonly MAX_IDLE_TICKS = 3;
 
   constructor(
     private adapter: ISiteAdapter,
@@ -29,8 +31,10 @@ export class DOMObserver {
     this.observer = new MutationObserver((mutations) => this.handleMutations(mutations));
     this.observer.observe(target, options);
 
-    // Start watchdog
-    this.watchdogTimer = setInterval(() => this.checkStagnation(), 2000);
+    // Watchdog is temporarily disabled to avoid timeout-based forced stop.
+    if (this.WATCHDOG_ENABLED) {
+      this.watchdogTimer = setInterval(() => this.checkStagnation(), 2000);
+    }
   }
 
   stop(): void {
@@ -43,6 +47,8 @@ export class DOMObserver {
   }
 
   private checkStagnation(): void {
+    if (!this.WATCHDOG_ENABLED) return;
+
     if (!this.store.isGenerating) {
       this.watchdogIdleTicks = 0;
       this.lastObservedTextLength = 0;
@@ -65,10 +71,14 @@ export class DOMObserver {
     if (this.watchdogIdleTicks >= this.MAX_IDLE_TICKS) {
       console.warn('[DeepThink Watchdog] Generation stalled for too long. Forcing interrupt...');
 
-      // 找到界面的停止按钮并点一下（如果有的话）
-      const btn = this.adapter.getSendButton();
-      if (btn && btn.classList.contains('stop')) {
-        btn.click();
+      // 程序触发 stop（与用户手动 stop 区分）
+      if (this.adapter.stopGeneration) {
+        this.adapter.stopGeneration();
+      } else {
+        const btn = this.adapter.getSendButton();
+        if (btn && btn.classList.contains('stop')) {
+          btn.click();
+        }
       }
 
       this.store.setGenerating(false);
@@ -77,7 +87,7 @@ export class DOMObserver {
 
       if (this.store.isAgentEnabled && !this.store.userAborted) {
         if (this.store.userWorkflowPhase === 'intent') {
-          void this.orchestrator.finishIntentAndStartDeep(this.store.lastRawText);
+          this.startIntentHandoff(this.store.lastRawText);
         } else if (this.store.userWorkflowPhase === 'clarify') {
           // Do nothing: waiting for user to answer
         } else if (this.store.currentLoop > 0 || this.store.isSummarizing) {
@@ -100,9 +110,7 @@ export class DOMObserver {
         this.beautifier.process();
         if (this.store.isAgentEnabled && !this.store.userAborted) {
           if (this.store.userWorkflowPhase === 'intent') {
-            setTimeout(() => {
-              void this.orchestrator.finishIntentAndStartDeep(this.store.lastRawText);
-            }, this.store.config.loopDelay);
+            this.startIntentHandoff(this.store.lastRawText, this.store.config.loopDelay);
           } else if (this.store.userWorkflowPhase === 'clarify') {
             // Do nothing: waiting for user to answer the questionnaire
           } else if (this.store.currentLoop > 0 || this.store.isSummarizing) {
@@ -124,9 +132,15 @@ export class DOMObserver {
 
     if (shouldCheckUI) {
       this.onReinjectUI();
-      if (!this.beautifier.isDomBusy()) {
-        this.debouncedProcess();
-      }
+    }
+
+    const shouldProcess =
+      shouldCheckUI ||
+      this.store.isGenerating ||
+      this.store.userWorkflowPhase === 'intent';
+
+    if (shouldProcess && !this.beautifier.isDomBusy()) {
+      this.debouncedProcess();
     }
   }
 
@@ -135,5 +149,24 @@ export class DOMObserver {
     this.debounceTimer = setTimeout(() => {
       this.beautifier.process();
     }, 80);
+  }
+
+  private startIntentHandoff(rawText: string, delayMs = 0): void {
+    if (this.intentHandoffInProgress) return;
+    this.intentHandoffInProgress = true;
+
+    const run = () => {
+      void this.orchestrator
+        .finishIntentAndStartDeep(rawText)
+        .finally(() => {
+          this.intentHandoffInProgress = false;
+        });
+    };
+
+    if (delayMs > 0) {
+      setTimeout(run, delayMs);
+    } else {
+      run();
+    }
   }
 }
