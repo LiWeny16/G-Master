@@ -1,4 +1,4 @@
-<div align="center">
+﻿<div align="center">
   <img src="public/icons/icon-origin.png" alt="G-Master Logo" width="128" />
   <h1>G-Master</h1>
   <p><em>Injecting Soul into Gemini: Multi-turn Deep Think, System Prompts, and Search Engines</em></p>
@@ -43,8 +43,11 @@ G-Master is a powerful browser extension based on Manifest V3, specially designe
 After introducing G-Master's deep think loop, Gemini's metrics see significant leaps, improving overall task execution by **over 40%**.
 
 <div align="center">
-  <img src="public/images/performance_comparison.png" alt="Performance Comparison: Standard vs G-Master" width="80%" />
+  <img src="docs/images/performance_comparison.png" alt="Performance Comparison: Standard vs G-Master" width="80%" />
 </div>
+
+---
+
 
 | Evaluation Dimension | 🤖 Standard Gemini | 🌟 G-Master Deep Think | Improvement |
 | :--- | :---: | :---: | :---: |
