@@ -1,8 +1,10 @@
+import { runInAction } from 'mobx';
 import { GeminiModelId, ISiteAdapter } from '../adapters/site-adapter';
 import { invokeBackground } from '../services/message-bus';
 import { StateStore } from '../stores/state-store';
 import { ParsedMarkers } from '../types';
 import { parseToolCalls } from './tool-call-parser';
+import { parseClarifyBlock } from './parsers';
 
 export class DeepThinkEngine {
   constructor(
@@ -119,6 +121,16 @@ export class DeepThinkEngine {
       return;
     }
 
+    // === 检测澄清问卷块（ON 模式中 DeepThinkEngine 也可能产生 [CLARIFY]）===
+    const clarifyQuestions = parseClarifyBlock(responseText);
+    if (clarifyQuestions && clarifyQuestions.length > 0) {
+      runInAction(() => {
+        this.store.userWorkflowPhase = 'clarify';
+        this.store.clarifyQuestions = clarifyQuestions;
+      });
+      return;
+    }
+
     const toolCalls = parseToolCalls(responseText);
     if (toolCalls.length > 0) {
       if (this.store.toolCallRoundsThisSession >= this.store.config.maxToolRoundsPerTurn) {
@@ -129,7 +141,9 @@ export class DeepThinkEngine {
         await this.sendPrompt(warnMsg, warnLabel);
         return;
       }
-      this.store.toolCallRoundsThisSession++;
+      runInAction(() => {
+        this.store.toolCallRoundsThisSession++;
+      });
       await this.executeToolCallsAndFollowUp(toolCalls);
       return;
     }
@@ -180,7 +194,9 @@ export class DeepThinkEngine {
     if (parsed.hasContinue) {
       this.store.incrementLoop();
       if (this.store.currentLoop > this.getEffectiveMaxLoops()) {
-        this.store.isSummarizing = true;
+        runInAction(() => {
+          this.store.isSummarizing = true;
+        });
         const sumLabelMax = this.store.config.language === 'en' ? '📋 Generate Final Summary (Limit Reached)' : '📋 生成最终总结（达到上限）';
         this.sendPrompt(this.buildSummaryPrompt(), sumLabelMax);
         return;
@@ -200,7 +216,9 @@ export class DeepThinkEngine {
         this.sendPrompt(this.buildForceDeepReviewPrompt(phase), forceLabel);
         return;
       }
-      this.store.isSummarizing = true;
+      runInAction(() => {
+        this.store.isSummarizing = true;
+      });
       const sumLabel = this.store.config.language === 'en' ? '📋 Generate Final Summary' : '📋 生成最终总结';
       this.sendPrompt(this.buildSummaryPrompt(), sumLabel);
     } else {
@@ -219,13 +237,15 @@ export class DeepThinkEngine {
     if (!this.store.isAgentEnabled || this.store.currentLoop > 0) return null;
     if (!userText.trim()) return null;
 
-    this.store.originalQuestion = userText.trim();
-    this.store.currentLoop = 1;
-    this.store.userAborted = false;
-    this.store.isSummarizing = false;
-    this.store.userWorkflowPhase = 'deep';
-    this.store.toolCallRoundsThisSession = 0;
-    this.store.plannedDeepLoops = null;
+    runInAction(() => {
+      this.store.originalQuestion = userText.trim();
+      this.store.currentLoop = 1;
+      this.store.userAborted = false;
+      this.store.isSummarizing = false;
+      this.store.userWorkflowPhase = 'deep';
+      this.store.toolCallRoundsThisSession = 0;
+      this.store.plannedDeepLoops = null;
+    });
 
     let systemPrompt = this.store.config.systemPromptTemplate;
     const activeMemories = this.store.config.pinnedMemories?.filter(m => m.enabled && m.content.trim()) || [];
@@ -241,7 +261,9 @@ export class DeepThinkEngine {
 
   // === 中止 ===
   abort(): void {
-    this.store.userAborted = true;
+    runInAction(() => {
+      this.store.userAborted = true;
+    });
     this.store.setAgentMode('off');
     this.store.resetState();
   }

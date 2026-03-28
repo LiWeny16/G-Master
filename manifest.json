@@ -30,7 +30,8 @@
         "src/content/content.css"
       ],
       "matches": [
-        "https://gemini.google.com/app/*"
+        "https://gemini.google.com/app*",
+        "https://gemini.google.com/u/*/app*"
       ]
     }
   ],

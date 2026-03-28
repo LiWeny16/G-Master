@@ -28,7 +28,7 @@ export function useInlineToggle(
     /* ── 根据 store 状态同步按钮外观 ── */
     function sync() {
       /* 在 autorun 内先读取所有 observable，确保 MobX 追踪依赖 */
-      const phase = store.enginePhase;   // idle | waiting | thinking | summarizing
+      const phase = store.enginePhase;   // idle | waiting | thinking | summarizing | clarifying
       const isActive = store.isAgentEnabled;
       const loop = store.currentLoop;
       const summarizing = store.isSummarizing;
@@ -153,14 +153,19 @@ export function useInlineToggle(
       const txt = btn.querySelector<HTMLElement>('.dt-tg-txt');
       if (!sp || !dot || !txt) return;
 
-      if (phase === 'thinking' || phase === 'summarizing') {
-        /* 思考中：显示旋转圈，高亮色 */
+      if (phase === 'thinking' || phase === 'summarizing' || phase === 'clarifying') {
+        /* 思考中/澄清中：显示旋转圈，高亮色 */
         sp.style.display = 'block';
         dot.style.display = 'none';
         btn.style.color = '#8B7355';
         btn.style.borderColor = '#8B7355';
         btn.style.backgroundColor = 'rgba(139,115,85,.08)';
-        txt.textContent = summarizing ? i18n.t('toggle_summarizing') : i18n.t('toggle_thinking', { loop });
+
+        if (phase === 'clarifying') {
+          txt.textContent = store.config.language === 'en' ? 'Waiting for input...' : '等待补充信息…';
+        } else {
+          txt.textContent = summarizing ? i18n.t('toggle_summarizing') : i18n.t('toggle_thinking', { loop });
+        }
       } else if (isActive) {
         /* 已开启但待命：实心点，高亮色 */
         sp.style.display = 'none';
@@ -294,7 +299,7 @@ export function useInlineToggle(
         e.stopPropagation();
 
         // 只有正在执行时才触发 abort
-        if (store.enginePhase === 'thinking' || store.enginePhase === 'summarizing') {
+        if (store.enginePhase === 'thinking' || store.enginePhase === 'summarizing' || store.enginePhase === 'clarifying') {
           abortRef.current();
         }
 

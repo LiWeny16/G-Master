@@ -4,7 +4,8 @@
 // @version      8.0.0
 // @description  系统提示词对用户不可见，ACTION标记替换为可视化UI徽章，输入区显示思考状态
 // @author       You & Gemini
-// @match        https://gemini.google.com/app/*
+// @match        https://gemini.google.com/app*
+// @match        https://gemini.google.com/u/*/app*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=gemini.google.com
 // @grant        none
 // ==/UserScript==

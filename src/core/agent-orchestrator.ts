@@ -4,8 +4,10 @@ import { getIntentSystemPrompt } from './intent-prompt';
 import { DeepThinkEngine } from './deep-think-engine';
 import type { StateStore } from '../stores/state-store';
 import type { LoopModel } from '../types';
+import { parseIntentJson, parseClarifyBlock } from './parsers';
+import { runInAction } from 'mobx';
 
-export type UserWorkflowPhase = 'none' | 'intent' | 'deep';
+export type UserWorkflowPhase = 'none' | 'intent' | 'deep' | 'clarify';
 
 export interface ParsedIntent {
   route: 'direct' | 'deep';
@@ -14,40 +16,6 @@ export interface ParsedIntent {
   needs_files: boolean;
   needs_code: boolean;
   summary: string;
-}
-
-function normalizeLoopCount(raw: unknown): number {
-  const n = typeof raw === 'number' ? raw : Number(raw);
-  if (!Number.isFinite(n)) return 1;
-  return Math.max(1, Math.min(3, Math.round(n)));
-}
-
-/** 从模型回复中提取一行 JSON 意图结果 */
-export function parseIntentJson(text: string): ParsedIntent | null {
-  const cleaned = text.replace(/```(?:json)?\s*([\s\S]*?)```/gi, '$1');
-  const lines = cleaned.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const line = lines[i];
-    if (!line.includes('{') || !line.includes('}')) continue;
-    try {
-      const raw: unknown = JSON.parse(line);
-      if (raw === null || typeof raw !== 'object') continue;
-      const o = raw as Record<string, unknown>;
-      const routeRaw = typeof o.route === 'string' ? o.route.trim().toLowerCase() : '';
-      const route: 'direct' | 'deep' = routeRaw === 'deep' ? 'deep' : 'direct';
-      return {
-        route,
-        deep_loops: normalizeLoopCount(o.deep_loops),
-        needs_web: Boolean(o.needs_web),
-        needs_files: Boolean(o.needs_files),
-        needs_code: Boolean(o.needs_code),
-        summary: typeof o.summary === 'string' ? o.summary : '',
-      };
-    } catch {
-      /* try previous line */
-    }
-  }
-  return null;
 }
 
 /**
@@ -99,13 +67,16 @@ export class AgentOrchestrator {
     const t = userPlainText.trim();
     if (!t) return;
 
-    this.store.userWorkflowPhase = 'intent';
-    this.store.originalQuestion = t;
-    this.store.currentLoop = 0;
-    this.store.userAborted = false;
-    this.store.isSummarizing = false;
-    this.store.toolCallRoundsThisSession = 0;
-    this.store.plannedDeepLoops = null;
+    runInAction(() => {
+      this.store.userWorkflowPhase = 'intent';
+      this.store.originalQuestion = t;
+      this.store.currentLoop = 0;
+      this.store.userAborted = false;
+      this.store.isSummarizing = false;
+      this.store.toolCallRoundsThisSession = 0;
+      this.store.plannedDeepLoops = null;
+      this.store.clarifyQuestions = [];
+    });
 
     await this.switchModel('fast');
 
@@ -128,7 +99,7 @@ export class AgentOrchestrator {
     await this.adapter.insertTextAndSend(body);
   }
 
-  /** 意图回复完成后：direct 直接结束；deep 切配置模型并发起循环。 */
+  /** 意图回复完成后：检测 [CLARIFY] → 显示问卷；否则 direct 结束 / deep 起循环。 */
   async finishIntentAndStartDeep(intentResponseText: string): Promise<void> {
     if (!this.store.isAgentEnabled || this.store.userAborted) return;
     if (this.store.userWorkflowPhase !== 'intent') return;
@@ -136,37 +107,106 @@ export class AgentOrchestrator {
     const parsed = parseIntentJson(intentResponseText);
     if (!parsed) {
       // 解析失败时不强行进入深度，避免打断 FAST 的直接回答。
-      this.store.userWorkflowPhase = 'none';
-      this.store.currentLoop = 0;
-      this.store.plannedDeepLoops = null;
+      runInAction(() => {
+        this.store.userWorkflowPhase = 'none';
+        this.store.currentLoop = 0;
+        this.store.plannedDeepLoops = null;
+      });
       return;
     }
 
-    this.store.lastIntentSummary = parsed?.summary ?? '';
+    runInAction(() => {
+      this.store.lastIntentSummary = parsed?.summary ?? '';
+    });
 
+    // === 检测 [CLARIFY] 块 ===
+    const clarifyQuestions = parseClarifyBlock(intentResponseText);
+    if (clarifyQuestions && clarifyQuestions.length > 0) {
+      runInAction(() => {
+        this.store.userWorkflowPhase = 'clarify';
+        this.store.clarifyQuestions = clarifyQuestions;
+        // 保留 parsed 供 resumeAfterClarify 使用
+        this.store.lastIntentSummary = parsed.summary;
+        this.store.pendingIntent = parsed;
+      });
+      return; // 等待用户在 UI 中回答
+    }
+
+    // 没有 [CLARIFY]，走原有逻辑
+    await this._startDeepOrFinish(parsed);
+  }
+
+  /** 用户提交问卷答案后，携带答案继续工作流 */
+  async resumeAfterClarify(answers: string[]): Promise<void> {
+    if (!this.store.isAgentEnabled || this.store.userAborted) return;
+
+    const pendingIntent = this.store.pendingIntent;
+
+    // 构建带答案的附加 prompt
+    const questions = this.store.clarifyQuestions;
+    const qaLines = questions.map((q, i) => `Q: ${q.question}\nA: ${answers[i] ?? ''}`).join('\n\n');
+    const prefixZh = '用户已补充以下关键信息，请基于这些信息继续完成回答：\n\n';
+    const prefixEn = 'The user has provided the following supplementary information. Please continue with the response based on these inputs:\n\n';
+    const prefix = this.store.config.language === 'en' ? prefixEn : prefixZh;
+    const supplementText = prefix + qaLines;
+
+    // 更新原始问题（追加答案上下文）
+    runInAction(() => {
+      this.store.originalQuestion = this.store.originalQuestion + '\n\n' + supplementText;
+      // 临时标记 intent，若后续走 _startDeepOrFinish 则需要
+      this.store.userWorkflowPhase = 'intent';
+      this.store.clarifyQuestions = [];
+      this.store.pendingIntent = null;
+    });
+
+    if (pendingIntent) {
+      await this._startDeepOrFinish(pendingIntent, supplementText);
+    } else {
+      // 走到这里说明是在深度思考阶段（ON模式或AUTO的deep模式）触发的问卷
+      runInAction(() => {
+        this.store.userWorkflowPhase = 'deep';
+      });
+      const uiLabel = this.store.config.language === 'en' ? '📝 Supplementary Info' : '📝 用户补充信息';
+      await this.engine.sendPrompt(supplementText, uiLabel);
+    }
+  }
+
+  /** 内部：intent 解析完后，决定 direct 结束还是进入深度循环 */
+  private async _startDeepOrFinish(parsed: ParsedIntent, supplementalText?: string): Promise<void> {
     const forceDeepByToolNeed =
       (parsed.needs_web && this.store.config.tavilyEnabled) ||
       (parsed.needs_files && this.store.config.localFolderEnabled);
 
     if (parsed.route === 'direct' && !forceDeepByToolNeed) {
       // simple 问题直接由 FAST 回答，不进入 LOOP。
-      this.store.userWorkflowPhase = 'none';
-      this.store.currentLoop = 0;
-      this.store.isSummarizing = false;
-      this.store.toolCallRoundsThisSession = 0;
-      this.store.plannedDeepLoops = null;
+      // 若有补充信息，需要把补充信息重新注入
+      if (supplementalText) {
+        await this.adapter.insertTextAndSend(supplementalText);
+      }
+      runInAction(() => {
+        this.store.userWorkflowPhase = 'none';
+        this.store.currentLoop = 0;
+        this.store.isSummarizing = false;
+        this.store.toolCallRoundsThisSession = 0;
+        this.store.plannedDeepLoops = null;
+      });
       return;
     }
 
     const plannedLoops = Math.max(1, Math.min(parsed.deep_loops, this.store.config.maxLoops));
-    this.store.plannedDeepLoops = plannedLoops;
+
+    runInAction(() => {
+      this.store.plannedDeepLoops = plannedLoops;
+    });
 
     const loopModel = this.loopModelToGeminiModel(this.store.config.loopModel);
     await this.switchModel(loopModel);
 
-    this.store.userWorkflowPhase = 'deep';
-    this.store.currentLoop = 1;
-    this.store.isSummarizing = false;
+    runInAction(() => {
+      this.store.userWorkflowPhase = 'deep';
+      this.store.currentLoop = 1;
+      this.store.isSummarizing = false;
+    });
 
     const toolsPrompt = this.buildEnabledToolsPrompt();
     const flagsLabel = this.store.config.language === 'en' ? 'AUTO Decision' : 'AUTO 决策';

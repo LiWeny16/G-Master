@@ -8,6 +8,7 @@ import { DOMBeautifier } from '../core/dom-beautifier';
 import { DOMObserver } from '../core/dom-observer';
 import FloatingBall from '../components/FloatingBall';
 import Panel from '../components/Panel';
+import ClarifyModal from '../components/ClarifyModal';
 import { useInlineToggle } from './useInlineToggle';
 import i18n from '../i18n';
 
@@ -108,6 +109,12 @@ const ContentApp: React.FC = observer(() => {
     if (_injecting) return;
     if (store.currentLoop > 0) return;
     if (store.userWorkflowPhase === 'intent') return;
+    // 问卷模式中：禁止用户直接发送，必须通过问卷 UI
+    if (store.userWorkflowPhase === 'clarify') {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
 
     const editor = document.querySelector('.ql-editor') as HTMLElement | null;
     if (!editor || editor.innerText.trim() === '') return;
@@ -163,6 +170,16 @@ const ContentApp: React.FC = observer(() => {
     engine.abort();
   };
 
+  /** 问卷提交 */
+  const handleClarifySubmit = (answers: string[]) => {
+    void orchestrator.resumeAfterClarify(answers);
+  };
+
+  /** 跳过问卷，直接继续（携带空答案） */
+  const handleClarifySkip = () => {
+    void orchestrator.resumeAfterClarify([]);
+  };
+
   /* 工具栏内联开关（仿 main.js injectUI，带旋转圈状态显示） */
   useInlineToggle(store, handleToggleEngine, handleAbort);
 
@@ -175,6 +192,11 @@ const ContentApp: React.FC = observer(() => {
         anchorPos={ballPos}
         onClose={() => setPanelOpen(false)}
         onAbort={handleAbort}
+      />
+      <ClarifyModal
+        store={store}
+        onSubmit={handleClarifySubmit}
+        onSkip={handleClarifySkip}
       />
     </>
   );

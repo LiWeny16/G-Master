@@ -4,6 +4,15 @@
 
 export type AgentMode = 'off' | 'on' | 'auto';
 export type LoopModel = 'fast' | 'think' | 'pro';
+export type UserWorkflowPhase = 'none' | 'intent' | 'deep' | 'clarify';
+
+/** 单条澄清问题（由 AI 返回，展示为问卷卡片） */
+export interface ClarifyQuestion {
+  /** 问题文本 */
+  question: string;
+  /** 两个预设选项 */
+  options: [string, string];
+}
 
 export interface ActionMarkerConfig {
   continueMarker: string;
@@ -34,7 +43,7 @@ export interface DeepThinkConfig {
   pinnedMemories?: { id: string; content: string; enabled: boolean; title: string }[];
 }
 
-export type EnginePhase = 'idle' | 'waiting' | 'thinking' | 'summarizing';
+export type EnginePhase = 'idle' | 'waiting' | 'thinking' | 'summarizing' | 'clarifying';
 
 export interface FloatingBallPosition {
   x: number;
@@ -83,6 +92,7 @@ export function getSystemPromptTemplate(lang: 'zh' | 'en', markers: ActionMarker
 3. [Anchor Principle] All thinking must revolve around the user's original query. Do not deviate.
 4. [Self-Questioning] After answering, proactively check: Are there logical leaps? Counterexamples? Missing boundary cases? If any doubt exists, append ${markers.continueMarker} at the VERY END, and on a new line output [NEXT_PROMPT: specific question]
 5. [Strict Exit Criteria] Output ${markers.finishMarker} ONLY IF all conditions are met: (a) Core points have factual backing; (b) Tested against counterarguments; (c) Key edge cases covered; (d) Complete response to the query. Otherwise, keep outputting ${markers.continueMarker}.
+6. [Clarification] If critical info is missing, output at the end: \n[CLARIFY]\n[{"question":"...","options":["A","B"]}]\n[/CLARIFY]\nMax 3 questions. DO NOT output if info is sufficient.
 Strictly adhere.`;
   }
   return `⟪DT:🧠 深度思考模式已激活⟫\n[系统指令]：请进入"深度反思与自我审查"模式。严格遵守：
@@ -91,6 +101,7 @@ Strictly adhere.`;
 3. 【锚定原则】所有思考必须围绕用户原始问题展开，禁止偏离。
 4. 【自我质疑】【强制多轮思考】在回答后，必须主动检查：逻辑链是否有跳跃？是否存在反例？是否有遗漏的边界情况？若任何一项存疑，在回答【最末尾】附上 ${markers.continueMarker}，并另起一行输出 [NEXT_PROMPT: 具体质疑问题]
 5. 【高标准结束条件】只有同时满足以下全部条件才能输出 ${markers.finishMarker}：(a) 核心论点有事实依据支撑；(b) 已从反对角度检验并无法推翻；(c) 主要边界情况已被覆盖；(d) 对原始问题有直接、完整的回应。如有任何条件未满足，必须继续输出 ${markers.continueMarker}。
+6. 【澄清问卷】若缺少关键信息，可在最末尾输出：\n[CLARIFY]\n[{"question":"...","options":["A","B"]}]\n[/CLARIFY]\n最多3题，信息足够时请勿输出。
 严格遵守。`;
 }
 

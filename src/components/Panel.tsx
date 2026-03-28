@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { runInAction } from 'mobx';
 import { observer } from 'mobx-react-lite';
 import { Bot, X, Loader2, CheckCircle2, Sparkles, Settings2, Info, Pin, Trash2, Plus, ChevronDown, ChevronUp } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -302,9 +303,13 @@ const Panel: React.FC<Props> = observer(({ store, open, anchorPos, onClose, onAb
 
   const handleResetAll = () => {
     void PersistService.clear().then(() => {
-      store.config = { ...DEFAULT_CONFIG };
+      runInAction(() => {
+        store.config = { ...DEFAULT_CONFIG };
+      });
     }).catch(() => {
-      store.config = { ...DEFAULT_CONFIG };
+      runInAction(() => {
+        store.config = { ...DEFAULT_CONFIG };
+      });
     });
   };
 

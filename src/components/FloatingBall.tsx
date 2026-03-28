@@ -1,6 +1,6 @@
 import React, { useCallback, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
-import { Bot, Loader2, Sparkles } from 'lucide-react';
+import { Bot, Loader2, Sparkles, HelpCircle } from 'lucide-react';
 import { StateStore } from '../stores/state-store';
 
 interface Props {
@@ -78,6 +78,7 @@ const FloatingBall: React.FC<Props> = observer(({ store, onTogglePanel }) => {
   const BallIcon = () => {
     if (phase === 'thinking') return <Loader2 size={17} className="dt-spin-icon" />;
     if (phase === 'summarizing') return <Sparkles size={17} className="dt-spin-icon" />;
+    if (phase === 'clarifying') return <HelpCircle size={17} />;
     return <Bot size={17} />;
   };
 

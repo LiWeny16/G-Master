@@ -42,6 +42,14 @@ const zh = {
     app_memory_prefix: '【用户设定的全局记忆与预设 Prompt】:',
     app_memory_default_title: '记忆',
 
+    // Clarify Questionnaire
+    clarify_title: '🤔 需要一些补充信息',
+    clarify_subtitle: 'Agent 需要以下信息才能为您提供最精准的答案，请选择或自定义填写：',
+    clarify_option_custom: '自定义…',
+    clarify_custom_placeholder: '请输入您的自定义答案',
+    clarify_submit: '提交，继续执行',
+    clarify_skip: '跳过，直接继续',
+
     // Settings
     settings_title: 'G-Master 深度思考',
     settings_badge: '设置',

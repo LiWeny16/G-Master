@@ -1,5 +1,6 @@
 import { ISiteAdapter } from '../adapters/site-adapter';
 import { StateStore } from '../stores/state-store';
+import { parseIntentJson } from './parsers';
 
 export class DOMBeautifier {
   private domBusy = false;
@@ -139,32 +140,23 @@ export class DOMBeautifier {
     ev.clipboardData.setData('text/plain', cleaned);
   };
 
-  private parseIntentJsonLine(line: string): { route: 'direct' | 'deep'; summary: string } | null {
-    const t = line.trim();
-    if (!t.startsWith('{') || !t.endsWith('}')) return null;
-    // 更宽松的检测：只要包含 route 和 deep_loops 就认为是意图 JSON
-    if (!t.includes('"route"')) return null;
-    if (!t.includes('"deep_loops"') && !t.includes('"summary"')) return null;
-    try {
-      const raw = JSON.parse(t) as Record<string, unknown>;
-      const route = raw.route === 'deep' ? 'deep' : raw.route === 'direct' ? 'direct' : null;
-      if (!route) return null;
-      return {
-        route,
-        summary: typeof raw.summary === 'string' ? raw.summary : '',
-      };
-    } catch {
-      return null;
-    }
-  }
-
   private sanitizeSpecialText(text: string): string {
     const { continueMarker, finishMarker } = this.store.config.markers;
     const out: string[] = [];
     let inAutoBlock = false;
+    let inClarifyBlock = false;
 
     for (const line of text.split(/\r?\n/)) {
       const trimmed = line.trim();
+
+      if (trimmed === '[CLARIFY]') {
+        inClarifyBlock = true;
+        continue;
+      }
+      if (inClarifyBlock) {
+        if (trimmed === '[/CLARIFY]') inClarifyBlock = false;
+        continue;
+      }
 
       if (trimmed.includes('[G-Master AUTO 决策]') || trimmed.includes('[G-Master AUTO Decision]')) {
         inAutoBlock = true;
@@ -185,7 +177,7 @@ export class DOMBeautifier {
       if (/^🧭\s*AUTO\s*(决策|Decision)[:：]/.test(trimmed)) continue;
       if (/^AUTO\s*(决策|Decision)[:：]/.test(trimmed)) continue;
       if (/^(进入深度模式|Entering deep mode)[。!！…\s]*$/.test(trimmed)) continue;
-      if (this.parseIntentJsonLine(trimmed)) continue;
+      if (parseIntentJson(trimmed)) continue;
 
       let clean = line;
       clean = clean.split(continueMarker).join('');
@@ -348,8 +340,8 @@ export class DOMBeautifier {
       const hasNextPrompt = text.includes('[NEXT_PROMPT:');
       const intentInfo = text
         .split(/\r?\n/)
-        .map((line) => this.parseIntentJsonLine(line))
-        .find((v): v is { route: 'direct' | 'deep'; summary: string } => Boolean(v));
+        .map((line) => parseIntentJson(line))
+        .find((v): v is { route: 'direct' | 'deep'; deep_loops: number; needs_web: boolean; needs_files: boolean; needs_code: boolean; summary: string } => Boolean(v));
 
       if (!hasContinue && !hasFinish && !hasNextPrompt && !intentInfo) return;
 
@@ -369,7 +361,7 @@ export class DOMBeautifier {
             const trimmed = line.trim();
             if (!trimmed) return true;
             // 过滤意图 JSON 行
-            if (this.parseIntentJsonLine(trimmed)) return false;
+            if (parseIntentJson(trimmed)) return false;
             // 过滤 AUTO 决策标签行
             if (/^🧭\s*AUTO\s*(决策|Decision)[:：]/.test(trimmed)) return false;
             if (/^AUTO\s*(决策|Decision)[:：]/.test(trimmed)) return false;
@@ -407,7 +399,7 @@ export class DOMBeautifier {
           child.classList.add('dt-hidden');
         }
         // 隐藏意图 JSON 行显示在 p/span 中的情况
-        if (this.parseIntentJsonLine(ct)) {
+        if (parseIntentJson(ct)) {
           child.classList.add('dt-hidden');
         }
       });
@@ -424,8 +416,22 @@ export class DOMBeautifier {
         }
       }
 
-      // 注入可视化徽章（仅生成完毕后）
+      // 在生成完毕后（!isStillGenerating），彻底隐藏或过滤 [CLARIFY] 块
       if (!isStillGenerating) {
+        let hidingClarify = false;
+        el.querySelectorAll('p, li, span, pre, code').forEach((child) => {
+          if ((child as HTMLElement).closest?.('.dt-resp-badge')) return;
+          const ct = (child.textContent ?? '').trim();
+
+          if (ct.includes('[CLARIFY]')) hidingClarify = true;
+
+          if (hidingClarify) {
+            child.classList.add('dt-hidden');
+            if (ct.includes('[/CLARIFY]')) hidingClarify = false;
+          }
+        });
+
+        // 原本的 注入可视化徽章 逻辑
         const badge = document.createElement('div');
         if (hasContinue) {
           badge.className = 'dt-resp-badge dt-badge-think';

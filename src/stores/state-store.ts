@@ -1,5 +1,6 @@
 import { makeAutoObservable, runInAction, toJS } from 'mobx';
-import { DeepThinkConfig, DEFAULT_CONFIG, EnginePhase, AgentMode, getReviewPhases, getSystemPromptTemplate } from '../types';
+import { DeepThinkConfig, DEFAULT_CONFIG, EnginePhase, AgentMode, getReviewPhases, getSystemPromptTemplate, ClarifyQuestion } from '../types';
+import type { ParsedIntent } from '../core/agent-orchestrator';
 import { PersistService } from '../services/persist-service';
 import i18n from '../i18n';
 
@@ -14,13 +15,17 @@ export class StateStore {
   lastRawText = '';
   isPanelOpen = false;
 
-  /** 全能工作流阶段（意图 / 主深度） / Universal workflow phase (Intent / Deep) */
-  userWorkflowPhase: 'none' | 'intent' | 'deep' = 'none';
+  /** 全能工作流阶段（意图 / 主深度 / 澄清问卷） / Universal workflow phase (Intent / Deep / Clarify) */
+  userWorkflowPhase: 'none' | 'intent' | 'deep' | 'clarify' = 'none';
   lastIntentSummary = '';
   /** 当前用户提问轮内，已连续工具回合次数（防刷） / Consecutive tool call rounds in current user turn (Anti-spam) */
   toolCallRoundsThisSession = 0;
   /** AUTO 模式本轮动态规划的深度轮次（null 表示使用常规配置） / Dynamically planned deep loops for the current round in AUTO mode (null means fallback to default config) */
   plannedDeepLoops: number | null = null;
+  /** 待澄清的问卷问题列表（当 phase === 'clarify' 时有效） */
+  clarifyQuestions: ClarifyQuestion[] = [];
+  /** 地構存储待处理的 intent 解析结果（问卷提交后续用） */
+  pendingIntent: ParsedIntent | null = null;
 
   // === 用户配置（持久化） / User Config (Persisted) ===
   config: DeepThinkConfig = { ...DEFAULT_CONFIG };
@@ -34,6 +39,7 @@ export class StateStore {
   get enginePhase(): EnginePhase {
     if (!this.isAgentEnabled) return 'idle';
     if (this.isSummarizing) return 'summarizing';
+    if (this.userWorkflowPhase === 'clarify') return 'clarifying';
     if (this.currentLoop > 0) return 'thinking';
     return 'waiting';
   }
@@ -85,6 +91,8 @@ export class StateStore {
     this.lastIntentSummary = '';
     this.toolCallRoundsThisSession = 0;
     this.plannedDeepLoops = null;
+    this.clarifyQuestions = [];
+    this.pendingIntent = null;
   }
 
   updateConfig(partial: Partial<DeepThinkConfig>): void {

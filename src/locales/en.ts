@@ -42,6 +42,14 @@ export default {
     app_memory_prefix: '[User Set Global Memory & Preset Prompt]:',
     app_memory_default_title: 'Memory',
 
+    // Clarify Questionnaire
+    clarify_title: '🤔 A Few Quick Questions',
+    clarify_subtitle: 'To give you the most accurate answer, the Agent needs the following details. Please choose or type your own:',
+    clarify_option_custom: 'Custom…',
+    clarify_custom_placeholder: 'Type your custom answer',
+    clarify_submit: 'Submit & Continue',
+    clarify_skip: 'Skip & Continue Anyway',
+
     // Settings
     settings_title: 'G-Master Settings',
     settings_badge: 'Settings',
