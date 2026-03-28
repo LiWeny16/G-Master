@@ -1,0 +1,1 @@
+import{H as e,et as t,nt as n,rt as r}from"./TextField-CcCmQNZC.js";import{t as i}from"./SettingsPageContent-CpR6eyaH.js";var a=r(n(),1),o=r(t(),1),s=e();function c(){return(0,s.jsx)(i,{})}o.createRoot(document.getElementById(`options-root`)).render((0,s.jsx)(a.StrictMode,{children:(0,s.jsx)(c,{})}));

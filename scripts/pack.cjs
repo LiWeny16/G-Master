@@ -9,6 +9,29 @@ const distDir = path.resolve(__dirname, '../dist');
 const zipFileName = `G-Master-v${version}.zip`;
 const outputFilePath = path.join(releaseDir, zipFileName);
 
+function sanitizeManifestForStore(distPath) {
+  const manifestPath = path.join(distPath, 'manifest.json');
+
+  if (!fs.existsSync(manifestPath)) {
+    console.error('❌ 未找到 dist/manifest.json，请先执行 pnpm build。');
+    process.exit(1);
+  }
+
+  try {
+    const raw = fs.readFileSync(manifestPath, 'utf-8');
+    const manifest = JSON.parse(raw);
+
+    if ('key' in manifest) {
+      delete manifest.key;
+      fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf-8');
+      console.log('ℹ️ 已移除 manifest 中的 key 字段（商店包要求）。');
+    }
+  } catch (err) {
+    console.error('❌ 处理 manifest.json 失败:', err);
+    process.exit(1);
+  }
+}
+
 // 确保 release 目录存在
 if (!fs.existsSync(releaseDir)) {
   fs.mkdirSync(releaseDir, { recursive: true });
@@ -19,6 +42,8 @@ if (!fs.existsSync(distDir)) {
   console.error('❌ dist 目录不存在，请先执行 pnpm build 进行构建！');
   process.exit(1);
 }
+
+sanitizeManifestForStore(distDir);
 
 const output = fs.createWriteStream(outputFilePath);
 const archive = archiver('zip', {
