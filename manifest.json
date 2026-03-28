@@ -1,8 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "Gemini Deep Think",
+  "name": "__MSG_extensionName__",
   "version": "1.0.0",
-  "description": "深度思考模式 - 驱动 Gemini 进行多轮自我审查式深度思考",
+  "description": "__MSG_extensionDescription__",
+  "default_locale": "en",
   "action": {
     "default_popup": "index.html",
     "default_icon": {
