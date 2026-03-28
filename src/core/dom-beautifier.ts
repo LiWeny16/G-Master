@@ -9,7 +9,7 @@ export class DOMBeautifier {
   constructor(
     private adapter: ISiteAdapter,
     private store: StateStore,
-  ) {}
+  ) { }
 
   isDomBusy(): boolean {
     return this.domBusy;
@@ -142,13 +142,13 @@ export class DOMBeautifier {
   private parseIntentJsonLine(line: string): { route: 'direct' | 'deep'; summary: string } | null {
     const t = line.trim();
     if (!t.startsWith('{') || !t.endsWith('}')) return null;
-    if (!t.includes('"route"') || !t.includes('"deep_loops"') || !t.includes('"summary"')) return null;
+    // 更宽松的检测：只要包含 route 和 deep_loops 就认为是意图 JSON
+    if (!t.includes('"route"')) return null;
+    if (!t.includes('"deep_loops"') && !t.includes('"summary"')) return null;
     try {
       const raw = JSON.parse(t) as Record<string, unknown>;
       const route = raw.route === 'deep' ? 'deep' : raw.route === 'direct' ? 'direct' : null;
       if (!route) return null;
-      const loops = typeof raw.deep_loops === 'number' ? raw.deep_loops : Number(raw.deep_loops);
-      if (!Number.isFinite(loops)) return null;
       return {
         route,
         summary: typeof raw.summary === 'string' ? raw.summary : '',
@@ -166,14 +166,14 @@ export class DOMBeautifier {
     for (const line of text.split(/\r?\n/)) {
       const trimmed = line.trim();
 
-      if (trimmed.includes('[G-Master AUTO 决策]')) {
+      if (trimmed.includes('[G-Master AUTO 决策]') || trimmed.includes('[G-Master AUTO Decision]')) {
         inAutoBlock = true;
         continue;
       }
 
       if (inAutoBlock) {
-        if (trimmed.startsWith('用户消息：')) {
-          const userPart = trimmed.replace(/^用户消息：\s*/, '');
+        if (trimmed.startsWith('用户消息：') || trimmed.startsWith('User Message:')) {
+          const userPart = trimmed.replace(/^(用户消息：|User Message:\s*)/, '');
           if (userPart) out.push(userPart);
           inAutoBlock = false;
         }
@@ -182,9 +182,9 @@ export class DOMBeautifier {
 
       if (trimmed.includes('⟪DT:')) continue;
       if (trimmed.includes('[NEXT_PROMPT:')) continue;
-      if (/^🧭\s*AUTO\s*决策[:：]/.test(trimmed)) continue;
-      if (/^AUTO\s*决策[:：]/.test(trimmed)) continue;
-      if (/^进入深度模式[。!！…\s]*$/.test(trimmed)) continue;
+      if (/^🧭\s*AUTO\s*(决策|Decision)[:：]/.test(trimmed)) continue;
+      if (/^AUTO\s*(决策|Decision)[:：]/.test(trimmed)) continue;
+      if (/^(进入深度模式|Entering deep mode)[。!！…\s]*$/.test(trimmed)) continue;
       if (this.parseIntentJsonLine(trimmed)) continue;
 
       let clean = line;
@@ -203,30 +203,40 @@ export class DOMBeautifier {
       if (el.dataset.dtDone === '1') return;
 
       const fullText = el.innerText;
-      const hasAutoDecisionMarker = fullText.includes('[G-Master AUTO 决策]');
+      const hasAutoDecisionMarker = fullText.includes('[G-Master AUTO 决策]') || fullText.includes('[G-Master AUTO Decision]');
+      const hasMemoryInjection = fullText.includes('【用户设定的全局记忆') || fullText.includes('[User Pinned Memories');
       const m = fullText.match(dtPattern);
-      if (!m && !hasAutoDecisionMarker) return;
 
-      const label = m ? m[1] : 'AUTO 决策';
+      if (!m && !hasAutoDecisionMarker && !hasMemoryInjection) return;
+
+      const autoLabel = this.store.config.language === 'en' ? 'AUTO Decision' : 'AUTO 决策';
+      const label = m ? m[1] : (hasAutoDecisionMarker ? autoLabel : null);
       const lines = el.querySelectorAll('.query-text-line');
       let foundMarker = false;
       let inAutoBlock = false;
+      let inMemoryBlock = false;
       let hasUserContent = false;
+      const memoryTitles: string[] = [];
 
       for (const line of lines) {
         const raw = line.textContent ?? '';
         const t = raw.trim();
 
         if (raw.includes('⟪DT:')) foundMarker = true;
-        if (raw.includes('[G-Master AUTO 决策]')) {
+        if (raw.includes('[G-Master AUTO 决策]') || raw.includes('[G-Master AUTO Decision]')) {
           inAutoBlock = true;
+          line.classList.add('dt-hidden');
+          continue;
+        }
+        if (raw.includes('【用户设定的全局记忆') || raw.includes('[User Pinned Memories')) {
+          inMemoryBlock = true;
           line.classList.add('dt-hidden');
           continue;
         }
 
         if (inAutoBlock) {
-          if (t.startsWith('用户消息：')) {
-            const userPart = t.replace(/^用户消息：\s*/, '');
+          if (t.startsWith('用户消息：') || t.startsWith('User Message:')) {
+            const userPart = t.replace(/^(用户消息：|User Message:\s*)/, '');
             if (userPart) {
               line.textContent = userPart;
               line.classList.remove('dt-hidden');
@@ -236,6 +246,28 @@ export class DOMBeautifier {
             }
             inAutoBlock = false;
             continue;
+          }
+          line.classList.add('dt-hidden');
+          continue;
+        }
+
+        if (inMemoryBlock) {
+          // 在记忆块中，如果有空行或遇到下一个指令块，可以跳出？
+          // 通常提取 `[标题]:` 来做 UI Tag
+          const matchTitle = t.match(/^\[(.*?)\]:/);
+          if (matchTitle) {
+            memoryTitles.push(matchTitle[1]);
+          }
+
+          if (foundMarker && (t.startsWith('[系统指令]') || t.startsWith('[System Directive]'))) {
+            inMemoryBlock = false; // 回到系统指令隐藏模式
+            line.classList.add('dt-hidden');
+            continue;
+          }
+
+          if (t.includes('⟪DT:')) {
+            inMemoryBlock = false;
+            foundMarker = true;
           }
 
           line.classList.add('dt-hidden');
@@ -255,22 +287,54 @@ export class DOMBeautifier {
         if (bubble) bubble.classList.add('dt-auto-bubble');
       }
 
-      // 颜色映射
-      let cls = 'dt-tag-green';
-      if (label.includes('总结')) cls = 'dt-tag-blue';
-      if (label.includes('纠偏') || label.includes('警告')) cls = 'dt-tag-orange';
-      if (label.includes('AUTO')) cls = 'dt-tag-blue';
+      const tagContainer = document.createElement('div');
+      tagContainer.className = 'dt-bubble-tags';
+      tagContainer.style.display = 'flex';
+      tagContainer.style.flexWrap = 'wrap';
+      tagContainer.style.gap = '6px';
+      tagContainer.style.marginTop = '6px';
 
-      const tag = document.createElement('div');
-      tag.className = 'dt-bubble-tag';
-      tag.innerHTML = `<span class="dt-tag ${cls}">${label}</span>`;
-      el.appendChild(tag);
+      // 主流程标签
+      if (label) {
+        let cls = 'dt-tag-green';
+        if (label.includes('总结') || label.includes('Summary')) cls = 'dt-tag-blue';
+        if (label.includes('纠偏') || label.includes('警告') || label.includes('Correction') || label.includes('Warning')) cls = 'dt-tag-orange';
+        if (label.includes('AUTO')) cls = 'dt-tag-blue';
+
+        const tag = document.createElement('div');
+        tag.className = 'dt-bubble-tag dt-flow-tag';
+        tag.innerHTML = `<span class="dt-tag ${cls}">${label}</span>`;
+        tagContainer.appendChild(tag);
+      }
+
+      // 记忆标签
+      if (memoryTitles.length > 0) {
+        memoryTitles.forEach(title => {
+          const memTag = document.createElement('div');
+          memTag.className = 'dt-bubble-tag dt-mem-tag';
+          // 使用稍微低饱和的棕色表示常驻记忆
+          memTag.innerHTML = `
+            <span class="dt-tag" style="background: rgba(139,115,85,0.06); color: #8B7355; border: 1px dashed rgba(139,115,85,0.3); opacity: 0.9;">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: -2px; opacity: 0.7;">
+                <path d="M12 17v5"/><path d="M9 10.74a2 2 0 1 0-3.32-1.48 2 2 0 0 0 3.32 1.48z"/><path d="M15 10.74a2 2 0 1 0-3.32-1.48 2 2 0 0 0 3.32 1.48z"/><path d="M12 17a5 5 0 0 0 5-5V9a5 5 0 0 0-10 0v3a5 5 0 0 0 5 5z"/>
+              </svg>
+              ${title}
+            </span>`;
+          tagContainer.appendChild(memTag);
+        });
+      }
+
+      if (tagContainer.childElementCount > 0) {
+        el.appendChild(tagContainer);
+      }
+
       el.dataset.dtDone = '1';
     });
   }
 
   private processResponseMarkers(): void {
-    if (this.store.isGenerating) return;
+    // 不再完全跳过 isGenerating，而是在生成中也进行基本清理（隐藏 JSON 行等）
+    const isStillGenerating = this.store.isGenerating;
 
     const { continueMarker, finishMarker } = this.store.config.markers;
 
@@ -304,10 +368,15 @@ export class DOMBeautifier {
           .filter((line) => {
             const trimmed = line.trim();
             if (!trimmed) return true;
+            // 过滤意图 JSON 行
             if (this.parseIntentJsonLine(trimmed)) return false;
-            if (intentInfo && /^🧭\s*AUTO\s*决策[:：]/.test(trimmed)) return false;
-            if (intentInfo && /^AUTO\s*决策[:：]/.test(trimmed)) return false;
-            if (intentInfo?.route === 'deep' && /^进入深度模式[。!！…\s]*$/.test(trimmed)) return false;
+            // 过滤 AUTO 决策标签行
+            if (/^🧭\s*AUTO\s*(决策|Decision)[:：]/.test(trimmed)) return false;
+            if (/^AUTO\s*(决策|Decision)[:：]/.test(trimmed)) return false;
+            // 过滤进入深度模式的提示文字
+            if (/^(进入深度模式|Entering deep mode)/.test(trimmed)) return false;
+            // 过滤 "进入深度模式执行搜索与分析" 等变体
+            if (/(深度模式|deep mode).*[。!！…]*$/.test(trimmed) && trimmed.length < 50) return false;
             return true;
           })
           .join('\n');
@@ -318,16 +387,27 @@ export class DOMBeautifier {
         if (changed) node.textContent = t;
       }
 
-      // 隐藏 NEXT_PROMPT 段落
+      // 隐藏 NEXT_PROMPT 段落和其他标记
       el.querySelectorAll('p, li, span').forEach((child) => {
         if ((child as HTMLElement).closest?.('.dt-resp-badge')) return;
-        if (child.textContent?.includes('[NEXT_PROMPT:')) {
+        const ct = (child.textContent ?? '').trim();
+        if (ct.includes('[NEXT_PROMPT:')) {
           child.classList.add('dt-hidden');
         }
-        if (intentInfo?.route === 'deep' && /^进入深度模式[。!！…\s]*$/.test((child.textContent ?? '').trim())) {
+        if (/^(进入深度模式|Entering deep mode)/.test(ct) && ct.length < 50) {
           child.classList.add('dt-hidden');
         }
-        if (/^🧭\s*AUTO\s*决策[:：]/.test((child.textContent ?? '').trim())) {
+        if (/(深度模式|deep mode).*[搜索|分析|综合|search|analy|synthe]/.test(ct) && ct.length < 60) {
+          child.classList.add('dt-hidden');
+        }
+        if (/^🧭\s*AUTO\s*(决策|Decision)[:：]/.test(ct)) {
+          child.classList.add('dt-hidden');
+        }
+        if (/^AUTO\s*(决策|Decision)[:：]/.test(ct)) {
+          child.classList.add('dt-hidden');
+        }
+        // 隐藏意图 JSON 行显示在 p/span 中的情况
+        if (this.parseIntentJsonLine(ct)) {
           child.classList.add('dt-hidden');
         }
       });
@@ -344,26 +424,37 @@ export class DOMBeautifier {
         }
       }
 
-      // 注入可视化徽章
-      const badge = document.createElement('div');
-      if (hasContinue) {
-        badge.className = 'dt-resp-badge dt-badge-think';
-        badge.textContent = `🔄 继续深入思考 · 第 ${this.store.currentLoop} 轮`;
-        el.appendChild(badge);
-      } else if (hasFinish) {
-        badge.className = 'dt-resp-badge dt-badge-done';
-        badge.textContent = '✅ 深度思考完成 · 正在生成最终总结...';
-        el.appendChild(badge);
-      } else if (intentInfo) {
-        badge.className = 'dt-resp-badge dt-badge-final';
-        badge.textContent =
-          intentInfo.route === 'deep'
-            ? `🧭 AUTO 决策：进入深度模式${intentInfo.summary ? ` · ${intentInfo.summary}` : ''}`
-            : `🧭 AUTO 决策：直接回答${intentInfo.summary ? ` · ${intentInfo.summary}` : ''}`;
-        el.appendChild(badge);
+      // 注入可视化徽章（仅生成完毕后）
+      if (!isStillGenerating) {
+        const badge = document.createElement('div');
+        if (hasContinue) {
+          badge.className = 'dt-resp-badge dt-badge-think';
+          badge.textContent = this.store.config.language === 'en'
+            ? `🔄 Continuing deep think · Round ${this.store.currentLoop}`
+            : `🔄 继续深入思考 · 第 ${this.store.currentLoop} 轮`;
+          el.appendChild(badge);
+        } else if (hasFinish) {
+          badge.className = 'dt-resp-badge dt-badge-done';
+          badge.textContent = this.store.config.language === 'en'
+            ? '✅ Deep think complete · Generating final summary...'
+            : '✅ 深度思考完成 · 正在生成最终总结...';
+          el.appendChild(badge);
+        } else if (intentInfo) {
+          badge.className = 'dt-resp-badge dt-badge-final';
+          if (this.store.config.language === 'en') {
+            badge.textContent = intentInfo.route === 'deep'
+              ? `🧭 AUTO Decision: Entering deep mode${intentInfo.summary ? ` · ${intentInfo.summary}` : ''}`
+              : `🧭 AUTO Decision: Direct answer${intentInfo.summary ? ` · ${intentInfo.summary}` : ''}`;
+          } else {
+            badge.textContent = intentInfo.route === 'deep'
+              ? `🧭 AUTO 决策：进入深度模式${intentInfo.summary ? ` · ${intentInfo.summary}` : ''}`
+              : `🧭 AUTO 决策：直接回答${intentInfo.summary ? ` · ${intentInfo.summary}` : ''}`;
+          }
+          el.appendChild(badge);
+        }
       }
 
-      el.dataset.dtDone = '1';
+      el.dataset.dtDone = isStillGenerating ? '0' : '1';
     });
   }
 }

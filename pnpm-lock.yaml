@@ -14,6 +14,9 @@ dependencies:
   '@mui/material':
     specifier: ^7.3.9
     version: 7.3.9(@emotion/react@11.14.0)(@emotion/styled@11.14.1)(@types/react@19.2.14)(react-dom@19.2.4)(react@19.2.4)
+  i18next:
+    specifier: ^26.0.0
+    version: 26.0.0(typescript@6.0.2)
   lucide-react:
     specifier: ^1.7.0
     version: 1.7.0(react@19.2.4)
@@ -29,6 +32,9 @@ dependencies:
   react-dom:
     specifier: ^19.2.4
     version: 19.2.4(react@19.2.4)
+  react-i18next:
+    specifier: ^17.0.0
+    version: 17.0.0(i18next@26.0.0)(react-dom@19.2.4)(react@19.2.4)(typescript@6.0.2)
 
 devDependencies:
   '@crxjs/vite-plugin':
@@ -2103,6 +2109,24 @@ packages:
       - '@noble/hashes'
     dev: true
 
+  /html-parse-stringify@3.0.1:
+    resolution: {integrity: sha512-KknJ50kTInJ7qIScF3jeaFRpMpE8/lfiTdzf/twXyPBLAGrLRTmkz3AdTnKeh40X8k9L2fdYwEp/42WGXIRGcg==}
+    dependencies:
+      void-elements: 3.1.0
+    dev: false
+
+  /i18next@26.0.0(typescript@6.0.2):
+    resolution: {integrity: sha512-+Dg27j7VH40WRy+Q010hj3jxlxDb3qFkA7EwuK4kx0+glLxEqZsxdB8MqliPBkTrXEuNlEfeosM3lucAHK+0tQ==}
+    peerDependencies:
+      typescript: ^5 || ^6
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+    dependencies:
+      '@babel/runtime': 7.29.2
+      typescript: 6.0.2
+    dev: false
+
   /ignore@5.3.2:
     resolution: {integrity: sha512-hsBTNUqQTDwkWtcdYI2i06Y/nUBEsNEDJKjWdigLvegy8kDuJAS8uRlpkkcQpyEXL0Z/pjDy5HBmMjRCJ2gq+g==}
     engines: {node: '>= 4'}
@@ -2650,6 +2674,31 @@ packages:
       react: 19.2.4
       scheduler: 0.27.0
 
+  /react-i18next@17.0.0(i18next@26.0.0)(react-dom@19.2.4)(react@19.2.4)(typescript@6.0.2):
+    resolution: {integrity: sha512-L7aqwOePCExt6nlF7000lN2YKWnR7IpSpQId9sj01798Xn3LAncBdTHKl9lA/nr+YrG78BTqWPJxq9mlrrmH7Q==}
+    peerDependencies:
+      i18next: '>= 25.10.10'
+      react: '>= 16.8.0'
+      react-dom: '*'
+      react-native: '*'
+      typescript: ^5 || ^6
+    peerDependenciesMeta:
+      react-dom:
+        optional: true
+      react-native:
+        optional: true
+      typescript:
+        optional: true
+    dependencies:
+      '@babel/runtime': 7.29.2
+      html-parse-stringify: 3.0.1
+      i18next: 26.0.0(typescript@6.0.2)
+      react: 19.2.4
+      react-dom: 19.2.4(react@19.2.4)
+      typescript: 6.0.2
+      use-sync-external-store: 1.6.0(react@19.2.4)
+    dev: false
+
   /react-is@16.13.1:
     resolution: {integrity: sha512-24e6ynE2H+OKt4kqsOvNd8kBpV65zoxbA4BVsEOB3ARVWQki/DHzaUoC5KuON/BiccDaCCTZBuOcfZs70kR8bQ==}
     dev: false
@@ -2910,7 +2959,6 @@ packages:
     resolution: {integrity: sha512-bGdAIrZ0wiGDo5l8c++HWtbaNCWTS4UTv7RaTH/ThVIgjkveJt83m74bBHMJkuCbslY8ixgLBVZJIOiQlQTjfQ==}
     engines: {node: '>=14.17'}
     hasBin: true
-    dev: true
 
   /undici@7.24.6:
     resolution: {integrity: sha512-Xi4agocCbRzt0yYMZGMA6ApD7gvtUFaxm4ZmeacWI4cZxaF6C+8I8QfofC20NAePiB/IcvZmzkJ7XPa471AEtA==}
@@ -3058,6 +3106,11 @@ packages:
     transitivePeerDependencies:
       - msw
     dev: true
+
+  /void-elements@3.1.0:
+    resolution: {integrity: sha512-Dhxzh5HZuiHQhbvTW9AMetFfBHDMYpo23Uo9btPXgdYP+3T5S+p+jgNy7spra+veYhBP2dCSgxR/i2Y02h5/6w==}
+    engines: {node: '>=0.10.0'}
+    dev: false
 
   /w3c-xmlserializer@5.0.0:
     resolution: {integrity: sha512-o8qghlI8NZHU1lLPrpi2+Uq7abh4GGPpYANlalzWxyWteJOCsr/P+oPBA49TOLu5FTZO4d3F9MnWJfiMo4BkmA==}

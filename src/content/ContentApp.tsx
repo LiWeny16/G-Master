@@ -9,12 +9,21 @@ import { DOMObserver } from '../core/dom-observer';
 import FloatingBall from '../components/FloatingBall';
 import Panel from '../components/Panel';
 import { useInlineToggle } from './useInlineToggle';
+import i18n from '../i18n';
 
 const store = new StateStore();
 const adapter = new GeminiAdapter();
 const engine = new DeepThinkEngine(adapter, store);
 const beautifier = new DOMBeautifier(adapter, store);
 const orchestrator = new AgentOrchestrator(adapter, store, engine);
+
+/**
+ * 防止 handleInterceptSend 重入的全局锁。
+ * 当我们注入文字后 setTimeout 点击 send-button 时，
+ * 事件会再次触发 handleClick → handleInterceptSend，
+ * 导致无限循环注入。用此标志阻断。
+ */
+let _injecting = false;
 
 const ContentApp: React.FC = observer(() => {
   const [panelOpen, setPanelOpen] = useState(false);
@@ -61,25 +70,20 @@ const ContentApp: React.FC = observer(() => {
     };
   }, []);
 
-  const handleInterceptSend = (e: Event) => {
-    if (!store.isAgentEnabled || store.currentLoop > 0) return;
-    if (store.userWorkflowPhase === 'intent') return;
+  /** 构建需要注入的记忆文本（无论 agent 是否开启都可用） */
+  const buildMemoryInjection = (): string => {
+    const activeMemories = store.config.pinnedMemories?.filter(m => m.enabled && m.content.trim()) || [];
+    if (activeMemories.length === 0) return '';
+    const memoriesText = activeMemories.map(m => `[${m.title || i18n.t('app_memory_default_title')}]: ${m.content}`).join('\n\n');
+    return `\n\n${i18n.t('app_memory_prefix')}\n${memoriesText}`;
+  };
 
-    const editor = document.querySelector('.ql-editor') as HTMLElement | null;
-    if (!editor || editor.innerText.trim() === '') return;
-
-    e.preventDefault();
-    e.stopPropagation();
-
-    const userText = editor.innerText.trim();
-
-    if (store.agentMode === 'auto') {
-      void orchestrator.beginIntentPhase(userText);
-      return;
-    }
-
-    const finalText = engine.interceptFirstSend(userText);
-    if (!finalText) return;
+  /**
+   * 用 insertText + 延迟点击的方式将追加文本和用户消息一起发送。
+   * 内部已做 _injecting 锁防止重入。
+   */
+  const appendTextAndSend = (editor: HTMLElement, textToAppend: string) => {
+    _injecting = true;
 
     editor.focus();
     const sel = window.getSelection();
@@ -88,13 +92,58 @@ const ContentApp: React.FC = observer(() => {
     range.collapse(false);
     sel?.removeAllRanges();
     sel?.addRange(range);
-    document.execCommand('insertText', false, store.config.systemPromptTemplate);
+    document.execCommand('insertText', false, textToAppend);
     editor.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
 
     setTimeout(() => {
       const btn = document.querySelector('.send-button') as HTMLButtonElement | null;
       if (btn && !btn.disabled && !btn.classList.contains('stop')) btn.click();
+      // 等发送完成再释放锁，给充裕的时间
+      setTimeout(() => { _injecting = false; }, 300);
     }, 150);
+  };
+
+  const handleInterceptSend = (e: Event) => {
+    // 防重入：如果正在注入过程中，不拦截
+    if (_injecting) return;
+    if (store.currentLoop > 0) return;
+    if (store.userWorkflowPhase === 'intent') return;
+
+    const editor = document.querySelector('.ql-editor') as HTMLElement | null;
+    if (!editor || editor.innerText.trim() === '') return;
+
+    const userText = editor.innerText.trim();
+
+    // === Case 1: 深度思考开启 — 走 AUTO 或 ON 流程 ===
+    if (store.isAgentEnabled) {
+      e.preventDefault();
+      e.stopPropagation();
+
+      if (store.agentMode === 'auto') {
+        // AUTO 模式：beginIntentPhase 会在内部注入记忆
+        _injecting = true;
+        void orchestrator.beginIntentPhase(userText).finally(() => {
+          setTimeout(() => { _injecting = false; }, 300);
+        });
+        return;
+      }
+
+      // ON 模式：interceptFirstSend
+      const finalText = engine.interceptFirstSend(userText);
+      if (!finalText) return;
+
+      appendTextAndSend(editor, store.config.systemPromptTemplate);
+      return;
+    }
+
+    // === Case 2: 深度思考关闭 — 但仍然注入记忆/系统 Prompt（如果有） ===
+    const memoryText = buildMemoryInjection();
+    if (!memoryText) return; // 没有记忆则不拦截，让原生送出
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    appendTextAndSend(editor, memoryText);
   };
 
   const handleTogglePanel = () => {

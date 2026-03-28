@@ -1,6 +1,6 @@
 import type { GeminiModelId, ISiteAdapter } from '../adapters/site-adapter';
 import { buildToolsSystemPrompt, allSkills } from '../skills/index';
-import { INTENT_SYSTEM_PROMPT } from './intent-prompt';
+import { getIntentSystemPrompt } from './intent-prompt';
 import { DeepThinkEngine } from './deep-think-engine';
 import type { StateStore } from '../stores/state-store';
 import type { LoopModel } from '../types';
@@ -18,8 +18,8 @@ export interface ParsedIntent {
 
 function normalizeLoopCount(raw: unknown): number {
   const n = typeof raw === 'number' ? raw : Number(raw);
-  if (!Number.isFinite(n)) return 3;
-  return Math.max(1, Math.min(12, Math.round(n)));
+  if (!Number.isFinite(n)) return 1;
+  return Math.max(1, Math.min(3, Math.round(n)));
 }
 
 /** 从模型回复中提取一行 JSON 意图结果 */
@@ -58,7 +58,7 @@ export class AgentOrchestrator {
     private adapter: ISiteAdapter,
     private store: StateStore,
     private engine: DeepThinkEngine,
-  ) {}
+  ) { }
 
   private async switchModel(model: GeminiModelId): Promise<void> {
     if (this.adapter.switchGeminiModel) {
@@ -86,10 +86,12 @@ export class AgentOrchestrator {
     });
 
     if (enabledSkills.length === 0) {
-      return '【工具调用】当前未启用任何工具，请勿输出 TOOL_CALL。';
+      return this.store.config.language === 'en'
+        ? '[Tool Calling] No tools are currently enabled, DO NOT output TOOL_CALL.'
+        : '【工具调用】当前未启用任何工具，请勿输出 TOOL_CALL。';
     }
 
-    return buildToolsSystemPrompt(enabledSkills);
+    return buildToolsSystemPrompt(enabledSkills, this.store.config.language);
   }
 
   /** 用户首次发送后：切到「快速」并发意图分类提示（不含深度思考模板）。 */
@@ -106,7 +108,23 @@ export class AgentOrchestrator {
     this.store.plannedDeepLoops = null;
 
     await this.switchModel('fast');
-    const body = `[G-Master AUTO 决策]\n${INTENT_SYSTEM_PROMPT}\n\n用户消息：\n${t}`;
+
+    // 构建记忆注入文本，让 route=direct 时 FLASH 也遵循用户的系统提示
+    let memoryBlock = '';
+    const activeMemories = this.store.config.pinnedMemories?.filter(m => m.enabled && m.content.trim()) || [];
+    if (activeMemories.length > 0) {
+      const defaultTitle = this.store.config.language === 'en' ? 'Memory' : '记忆';
+      const memoriesText = activeMemories.map(m => `[${m.title || defaultTitle}]: ${m.content}`).join('\n\n');
+      const userPromptPrefix = this.store.config.language === 'en'
+        ? '\n\n[User Pinned Memories / Prompts — If route=direct, please follow these instructions in your final response]:\n'
+        : '\n\n【用户设定的全局记忆与预设 Prompt — 若 route=direct 请在回答中遵守这些指令】:\n';
+      memoryBlock = `${userPromptPrefix}${memoriesText}\n`;
+    }
+
+    const decisionPrefix = this.store.config.language === 'en' ? '[G-Master AUTO Decision]' : '[G-Master AUTO 决策]';
+    const userMsgPrefix = this.store.config.language === 'en' ? 'User Message:' : '用户消息：';
+    const intentPrompt = getIntentSystemPrompt(this.store.config.language);
+    const body = `${decisionPrefix}\n${intentPrompt}${memoryBlock}\n\n${userMsgPrefix}\n${t}`;
     await this.adapter.insertTextAndSend(body);
   }
 
@@ -151,33 +169,40 @@ export class AgentOrchestrator {
     this.store.isSummarizing = false;
 
     const toolsPrompt = this.buildEnabledToolsPrompt();
+    const flagsLabel = this.store.config.language === 'en' ? 'AUTO Decision' : 'AUTO 决策';
     const flags = parsed
-      ? `「AUTO 决策」${parsed.summary}（needs_web=${parsed.needs_web} needs_files=${parsed.needs_files} needs_code=${parsed.needs_code}，planned_loops=${plannedLoops}）\n\n`
+      ? `「${flagsLabel}」${parsed.summary}（needs_web=${parsed.needs_web} needs_files=${parsed.needs_files} needs_code=${parsed.needs_code}, planned_loops=${plannedLoops}）\n\n`
       : '';
 
     const mustUseToolHints: string[] = [];
     if (parsed.needs_web && this.store.config.tavilyEnabled) {
       mustUseToolHints.push(
-        '【强制要求】你已判定 needs_web=true，必须先显式调用一次 [TOOL_CALL: web_search({...})]，拿到 [TOOL_RESULT: web_search] 后再继续分析。',
+        this.store.config.language === 'en'
+          ? '[Requirement] You determined needs_web=true. You MUST explicitly call [TOOL_CALL: web_search({...})] first, then wait for [TOOL_RESULT: web_search] before continuing.'
+          : '【强制要求】你已判定 needs_web=true，必须先显式调用一次 [TOOL_CALL: web_search({...})]，拿到 [TOOL_RESULT: web_search] 后再继续分析。'
       );
     }
     if (parsed.needs_files && this.store.config.localFolderEnabled) {
       mustUseToolHints.push(
-        '【强制要求】你已判定 needs_files=true，必须先调用 read_local_file 获取文件内容后再继续结论。',
+        this.store.config.language === 'en'
+          ? '[Requirement] You determined needs_files=true. You MUST call read_local_file to read local files before concluding.'
+          : '【强制要求】你已判定 needs_files=true，必须先调用 read_local_file 获取文件内容后再继续结论。'
       );
     }
 
+    const originalQueryPrefix = this.store.config.language === 'en' ? 'Original User Query:' : '用户原始问题：';
     const block =
-      `用户原始问题：\n${this.store.originalQuestion}\n\n` +
+      `${originalQueryPrefix}\n${this.store.originalQuestion}\n\n` +
       flags +
       (mustUseToolHints.length ? `${mustUseToolHints.join('\n')}\n\n` : '') +
       this.store.config.systemPromptTemplate +
       '\n\n' +
       toolsPrompt;
 
-    await this.engine.sendPrompt(
-      block,
-      `🧠 ${this.getLoopModelLabel(loopModel)} 深度思考 · 计划${plannedLoops}轮`,
-    );
+    const uiTitlePrefix = this.store.config.language === 'en'
+      ? `🧠 ${this.getLoopModelLabel(loopModel)} Deep Think · Planned ${plannedLoops} Loops`
+      : `🧠 ${this.getLoopModelLabel(loopModel)} 深度思考 · 计划${plannedLoops}轮`;
+
+    await this.engine.sendPrompt(block, uiTitlePrefix);
   }
 }

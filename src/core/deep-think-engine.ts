@@ -8,7 +8,7 @@ export class DeepThinkEngine {
   constructor(
     private adapter: ISiteAdapter,
     private store: StateStore,
-  ) {}
+  ) { }
 
   // === 解析 Action Markers ===
   parseActionMarkers(text: string): ParsedMarkers {
@@ -51,11 +51,11 @@ export class DeepThinkEngine {
   buildReviewPrompt(nextQuestion: string): string {
     const { markers } = this.store.config;
     return (
-      `[自我审查任务]：${nextQuestion}\n\n` +
-      `【锚定提醒】所有反思必须围绕原始问题「${this.store.originalQuestion}」展开。\n\n` +
-      `请严苛自我挑刺与修正。补充事实来源和URL。不懂就说不懂。\n` +
-      `只有同时满足：(a)论点有依据 (b)反驳角度已检验 (c)边界情况已覆盖，才可输出 ${markers.finishMarker} 结束。\n` +
-      `否则输出 ${markers.continueMarker} + [NEXT_PROMPT: ...] 继续。`
+      `[Self-Review Task]: ${nextQuestion}\n\n` +
+      `[Anchor Reminder] All reflections MUST revolve around the original question: "${this.store.originalQuestion}".\n\n` +
+      `Be strictly critical of your own reasoning. Provide factual sources and URLs. If you don't know, say so.\n` +
+      `You may ONLY output ${markers.finishMarker} to finish if: (a) arguments have evidence, (b) counterarguments have been checked, and (c) edge cases are covered.\n` +
+      `Otherwise, you MUST output ${markers.continueMarker} + [NEXT_PROMPT: ...] to continue.`
     );
   }
 
@@ -63,32 +63,32 @@ export class DeepThinkEngine {
     const { markers } = this.store.config;
     const minLoops = this.getEffectiveMinLoops();
     return (
-      `[强制深化审查]：你过早得出结论，系统要求至少完成 ${minLoops} 轮审查（当前第 ${this.store.currentLoop} 轮）。\n\n` +
-      `本轮强制审查视角：${reviewPhase}\n\n` +
-      `【锚定提醒】所有反思必须围绕原始问题「${this.store.originalQuestion}」展开。\n\n` +
-      `完成后，若发现新问题输出 ${markers.continueMarker} + [NEXT_PROMPT: ...]；若已满足全部结束条件则输出 ${markers.finishMarker}。`
+      `[Forced Deep Review]: You concluded too early. The system requires at least ${minLoops} review rounds (currently at round ${this.store.currentLoop}).\n\n` +
+      `Mandatory review perspective for this round: ${reviewPhase}\n\n` +
+      `[Anchor Reminder] All reflections MUST revolve around the original question: "${this.store.originalQuestion}".\n\n` +
+      `After reviewing, if new issues are found, output ${markers.continueMarker} + [NEXT_PROMPT: ...]; if all exit conditions are met, output ${markers.finishMarker}.`
     );
   }
 
   buildSummaryPrompt(): string {
     return (
-      `[最终总结指令]：深度思考已结束。回顾从原始问题到现在的全部思考与修正，针对：\n\n` +
-      `「${this.store.originalQuestion}」\n\n` +
-      `给出全面最终总结。要求：\n` +
-      `1. 结构清晰，善用标题、表格等排版。\n` +
-      `2. 整合已验证的核心结论，剔除已推翻的错误。\n` +
-      `3. 标注不确定部分。\n` +
-      `4. 附上引用来源和链接。\n` +
-      `5. 直接完整回应原始问题。\n\n` +
-      `直接输出总结，无需附加任何 ACTION 标记。`
+      `[Final Summary Command]: Deep thinking has concluded. Review all thoughts and corrections from the original question until now regarding:\n\n` +
+      `"${this.store.originalQuestion}"\n\n` +
+      `Provide a comprehensive final summary. Requirements:\n` +
+      `1. Clear structure, utilizing headings, tables, etc.\n` +
+      `2. Consolidate verified core conclusions and exclude overturned errors.\n` +
+      `3. Mark uncertain parts explicitly.\n` +
+      `4. Include citation sources and links.\n` +
+      `5. Provide a direct and complete response to the original question.\n\n` +
+      `Output the summary directly, without any additional ACTION markers.`
     );
   }
 
   buildCorrectionPrompt(): string {
     const { markers } = this.store.config;
     return (
-      `[系统警告]：未检测到动作标记。请围绕原始问题「${this.store.originalQuestion}」思考。\n` +
-      `必须在末尾加上 ${markers.continueMarker} + [NEXT_PROMPT: ...] 继续，或 ${markers.finishMarker} 结束。`
+      `[System Warning]: No action markers detected. Please think around the original question "${this.store.originalQuestion}".\n` +
+      `You MUST append ${markers.continueMarker} + [NEXT_PROMPT: ...] to continue, or ${markers.finishMarker} to finish at the very end.`
     );
   }
 
@@ -122,10 +122,11 @@ export class DeepThinkEngine {
     const toolCalls = parseToolCalls(responseText);
     if (toolCalls.length > 0) {
       if (this.store.toolCallRoundsThisSession >= this.store.config.maxToolRoundsPerTurn) {
-        await this.sendPrompt(
-          `[系统] 本轮工具调用次数已达上限（${this.store.config.maxToolRoundsPerTurn}）。请直接用已有信息作答，勿再输出 TOOL_CALL。`,
-          '⚠️ 工具上限',
-        );
+        const warnMsg = this.store.config.language === 'en'
+          ? `[System] Tool call limit reached for this round (${this.store.config.maxToolRoundsPerTurn}). Please answer directly using existing information without outputting TOOL_CALL.`
+          : `[系统] 本轮工具调用次数已达上限（${this.store.config.maxToolRoundsPerTurn}）。请直接用已有信息作答，勿再输出 TOOL_CALL。`;
+        const warnLabel = this.store.config.language === 'en' ? '⚠️ Tool Limit' : '⚠️ 工具上限';
+        await this.sendPrompt(warnMsg, warnLabel);
         return;
       }
       this.store.toolCallRoundsThisSession++;
@@ -144,11 +145,11 @@ export class DeepThinkEngine {
 
     for (const tc of toolCalls) {
       if (tc.name === 'web_search' && !this.store.config.tavilyEnabled) {
-        lines.push('[TOOL_RESULT: web_search]\n{"error":"Tavily 搜索开关已关闭"}');
+        lines.push('[TOOL_RESULT: web_search]\n{"error":"Web search is disabled"}');
         continue;
       }
       if ((tc.name === 'read_local_file' || tc.name === 'write_local_file') && !this.store.config.localFolderEnabled) {
-        lines.push(`[TOOL_RESULT: ${tc.name}]\n{"error":"文件夹读取开关已关闭"}`);
+        lines.push(`[TOOL_RESULT: ${tc.name}]\n{"error":"Local folder access is disabled"}`);
         continue;
       }
 
@@ -165,10 +166,12 @@ export class DeepThinkEngine {
       }
     }
 
-    const payload =
-      `以下为宿主工具返回，请据此继续（可再次输出 [TOOL_CALL: ...] 或按深度思考规则输出 ACTION）：\n\n` +
-      lines.join('\n\n');
-    await this.sendPrompt(payload, '🔧 工具结果');
+    const payloadMsg = this.store.config.language === 'en'
+      ? `The following are the tool results from the host. Please continue based on these (you may output [TOOL_CALL: ...] again or continue thinking and outputting ACTIONs):\n\n`
+      : `以下为宿主工具返回，请据此继续（可再次输出 [TOOL_CALL: ...] 或按深度思考规则输出 ACTION）：\n\n`;
+    const payload = payloadMsg + lines.join('\n\n');
+    const payloadLabel = this.store.config.language === 'en' ? '🔧 Tool Result' : '🔧 工具结果';
+    await this.sendPrompt(payload, payloadLabel);
   }
 
   private evaluateMarkersOnly(responseText: string): void {
@@ -178,28 +181,31 @@ export class DeepThinkEngine {
       this.store.incrementLoop();
       if (this.store.currentLoop > this.getEffectiveMaxLoops()) {
         this.store.isSummarizing = true;
-        this.sendPrompt(this.buildSummaryPrompt(), '📋 生成最终总结（达到上限）');
+        const sumLabelMax = this.store.config.language === 'en' ? '📋 Generate Final Summary (Limit Reached)' : '📋 生成最终总结（达到上限）';
+        this.sendPrompt(this.buildSummaryPrompt(), sumLabelMax);
         return;
       }
       const next = parsed.nextPrompt ?? this.getReviewPhase();
-      this.sendPrompt(
-        this.buildReviewPrompt(next),
-        `🔄 第${this.store.currentLoop}轮 · 自我审查`,
-      );
+      const reviewLabel = this.store.config.language === 'en'
+        ? `🔄 Loop ${this.store.currentLoop} · Self-Review`
+        : `🔄 第${this.store.currentLoop}轮 · 自我审查`;
+      this.sendPrompt(this.buildReviewPrompt(next), reviewLabel);
     } else if (parsed.hasFinish) {
       if (this.store.currentLoop < this.getEffectiveMinLoops()) {
         this.store.incrementLoop();
         const phase = this.getReviewPhase();
-        this.sendPrompt(
-          this.buildForceDeepReviewPrompt(phase),
-          `🔍 第${this.store.currentLoop}轮 · 强制深化`,
-        );
+        const forceLabel = this.store.config.language === 'en'
+          ? `🔍 Loop ${this.store.currentLoop} · Forced Deepening`
+          : `🔍 第${this.store.currentLoop}轮 · 强制深化`;
+        this.sendPrompt(this.buildForceDeepReviewPrompt(phase), forceLabel);
         return;
       }
       this.store.isSummarizing = true;
-      this.sendPrompt(this.buildSummaryPrompt(), '📋 生成最终总结');
+      const sumLabel = this.store.config.language === 'en' ? '📋 Generate Final Summary' : '📋 生成最终总结';
+      this.sendPrompt(this.buildSummaryPrompt(), sumLabel);
     } else {
-      this.sendPrompt(this.buildCorrectionPrompt(), '⚠️ 系统纠偏');
+      const corrLabel = this.store.config.language === 'en' ? '⚠️ System Correction' : '⚠️ 系统纠偏';
+      this.sendPrompt(this.buildCorrectionPrompt(), corrLabel);
     }
   }
 
@@ -221,7 +227,16 @@ export class DeepThinkEngine {
     this.store.toolCallRoundsThisSession = 0;
     this.store.plannedDeepLoops = null;
 
-    return userText + this.store.config.systemPromptTemplate;
+    let systemPrompt = this.store.config.systemPromptTemplate;
+    const activeMemories = this.store.config.pinnedMemories?.filter(m => m.enabled && m.content.trim()) || [];
+    if (activeMemories.length > 0) {
+      const defaultTitle = this.store.config.language === 'en' ? 'Memory' : '记忆';
+      const memoriesText = activeMemories.map(m => `[${m.title || defaultTitle}]: ${m.content}`).join('\n\n');
+      const memoryHeader = this.store.config.language === 'en' ? '[User Pinned Memories & Presets]' : '【用户设定的全局记忆与预设 Prompt】';
+      systemPrompt = `\n\n${memoryHeader}:\n${memoriesText}\n\n` + systemPrompt;
+    }
+
+    return userText + systemPrompt;
   }
 
   // === 中止 ===

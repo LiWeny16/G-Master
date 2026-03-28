@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { observer } from 'mobx-react-lite';
-import { Bot, X, Loader2, CheckCircle2, Sparkles, Settings2, Info } from 'lucide-react';
+import { Bot, X, Loader2, CheckCircle2, Sparkles, Settings2, Info, Pin, Trash2, Plus, ChevronDown, ChevronUp } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { StateStore } from '../stores/state-store';
 import { DEFAULT_CONFIG, LoopModel } from '../types';
 import { PersistService } from '../services/persist-service';
@@ -9,7 +10,6 @@ import {
   Box,
   Button,
   Divider,
-  FormControlLabel,
   IconButton,
   MenuItem,
   Stack,
@@ -56,38 +56,229 @@ const NumField: React.FC<{
   onChange: (v: number) => void;
 }> = ({ label, value, min = 0, step = 1, onChange }) => (
   <Box className="dt-field" sx={{ mt: 1 }}>
-    <Typography className="dt-field-label">{label}</Typography>
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+    <Typography className="dt-field-label" sx={{ mb: 0.5 }}>{label}</Typography>
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
       <IconButton
         size="small"
         onClick={() => onChange(Math.max(min, value - step))}
-        sx={{ border: '1px solid #D4C9B8', borderRadius: 1.5 }}
+        sx={{ border: '1px solid #D4C9B8', borderRadius: '50%', width: 28, height: 28 }}
       >
-        -
+        <Typography sx={{ fontSize: 16, lineHeight: 1 }}>-</Typography>
       </IconButton>
       <TextField
+        variant="standard"
         type="number"
-        size="small"
         value={value}
         onChange={(e) => {
           const v = parseFloat(e.target.value);
           if (!Number.isNaN(v)) onChange(Math.max(min, v));
         }}
-        inputProps={{ min, step }}
-        sx={{ flex: 1 }}
+        InputProps={{
+          disableUnderline: true,
+          inputProps: { min, step, style: { textAlign: 'center' } }
+        }}
+        sx={{
+          flex: 1,
+          '& .MuiInputBase-root': {
+            borderRadius: '14px',
+            backgroundColor: '#EBE5DB',
+            height: 28,
+            padding: 0,
+          },
+          '& input': {
+            height: '28px',
+            padding: 0,
+            boxSizing: 'border-box'
+          },
+          // 隐藏原生 number 输入框自带的上下调整小箭头
+          '& input[type=number]': {
+            MozAppearance: 'textfield',
+          },
+          '& input[type=number]::-webkit-outer-spin-button, & input[type=number]::-webkit-inner-spin-button': {
+            WebkitAppearance: 'none',
+            margin: 0,
+          },
+        }}
       />
       <IconButton
         size="small"
         onClick={() => onChange(value + step)}
-        sx={{ border: '1px solid #D4C9B8', borderRadius: 1.5 }}
+        sx={{ border: '1px solid #D4C9B8', borderRadius: '50%', width: 28, height: 28 }}
       >
-        +
+        <Typography sx={{ fontSize: 16, lineHeight: 1 }}>+</Typography>
       </IconButton>
     </Box>
   </Box>
 );
 
+/* ── 核心记忆卡片列表 (MemoryCardList) ── */
+const MemoryCardList: React.FC<{ store: StateStore }> = observer(({ store }) => {
+  const { t } = useTranslation();
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const memories = store.config.pinnedMemories || [];
+
+  const handleAdd = () => {
+    const newId = Date.now().toString();
+    store.updateConfig({
+      pinnedMemories: [
+        ...memories,
+        { id: newId, enabled: true, title: t('panel_memory_new'), content: '' }
+      ]
+    });
+    store.flushPersist(); // Fix for Issue 1: flush immediately on add
+    setExpandedId(newId);
+  };
+
+  const updateMemory = (id: string, updates: Partial<{ title: string; content: string; enabled: boolean }>) => {
+    const newMems = memories.map(m => m.id === id ? { ...m, ...updates } : { ...m });
+    store.updateConfig({ pinnedMemories: newMems });
+    if (updates.enabled !== undefined) {
+      store.flushPersist(); // immediate flush on toggle
+    }
+  };
+
+  const removeMemory = (id: string) => {
+    const newMems = memories.filter(m => m.id !== id).map(m => ({ ...m }));
+    store.updateConfig({ pinnedMemories: newMems });
+    store.flushPersist();
+  };
+
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+      {memories.map((mem) => {
+        const isExpanded = expandedId === mem.id;
+        return (
+          <Box
+            key={mem.id}
+            sx={{
+              border: `1px solid ${mem.enabled ? 'rgba(139,115,85,0.2)' : '#e0e0e0'}`,
+              borderRadius: '12px',
+              bgcolor: mem.enabled ? 'rgba(139,115,85,0.03)' : '#fcfcfc',
+              overflow: 'hidden',
+              transition: 'all 0.2s',
+              boxShadow: isExpanded ? '0 4px 12px rgba(0,0,0,0.03)' : 'none',
+              opacity: mem.enabled ? 1 : 0.7,
+            }}
+          >
+            {/* Header / Condensed View */}
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                p: 1.2,
+                cursor: 'pointer',
+                gap: 1.5,
+              }}
+              onClick={() => setExpandedId(isExpanded ? null : mem.id)}
+            >
+              <Switch
+                size="small"
+                checked={mem.enabled}
+                onChange={(e) => updateMemory(mem.id, { enabled: e.target.checked })}
+                onClick={(e) => e.stopPropagation()}
+                sx={{ ml: 0.5 }}
+              />
+              <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Typography sx={{ fontSize: 13, fontWeight: 600, color: mem.enabled ? '#8B7355' : '#666' }}>
+                  {mem.title || t('panel_memory_unnamed')}
+                </Typography>
+                {/* 截断的内容预览 */}
+                {!isExpanded && mem.content && (
+                  <Typography
+                    sx={{
+                      fontSize: 12,
+                      color: '#999',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      maxWidth: '120px'
+                    }}
+                  >
+                    - {mem.content}
+                  </Typography>
+                )}
+              </Box>
+              <IconButton
+                size="small"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  removeMemory(mem.id);
+                }}
+                sx={{ color: '#ff6b6b', opacity: 0.6, '&:hover': { opacity: 1, bgcolor: 'rgba(255,107,107,0.1)' } }}
+              >
+                <Trash2 size={14} />
+              </IconButton>
+              <Box sx={{ color: '#ccc', display: 'flex', alignItems: 'center' }}>
+                {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              </Box>
+            </Box>
+
+            {/* Expanded Content Area */}
+            {isExpanded && (
+              <Box sx={{ p: 1.5, pt: 0, borderTop: '1px solid rgba(0,0,0,0.04)' }}>
+                <TextField
+                  fullWidth
+                  variant="standard"
+                  placeholder={t('panel_memory_title_placeholder')}
+                  value={mem.title}
+                  onChange={(e) => updateMemory(mem.id, { title: e.target.value })}
+                  onBlur={() => store.flushPersist()}
+                  onClick={(e) => e.stopPropagation()}
+                  sx={{ mb: 1, mt: 1, '& .MuiInputBase-input': { fontSize: 13, fontWeight: 600, color: '#333' } }}
+                  InputProps={{ disableUnderline: true }}
+                />
+                <TextField
+                  multiline
+                  minRows={2}
+                  maxRows={8}
+                  placeholder={t('panel_memory_content_placeholder')}
+                  value={mem.content}
+                  onChange={(e) => updateMemory(mem.id, { content: e.target.value })}
+                  onBlur={() => store.flushPersist()}
+                  onClick={(e) => e.stopPropagation()}
+                  fullWidth
+                  variant="outlined"
+                  size="small"
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      fontSize: 12,
+                      backgroundColor: mem.enabled ? '#fff' : '#f5f5f5',
+                      borderRadius: '8px',
+                      '& fieldset': { borderColor: 'rgba(0,0,0,0.08)' },
+                      '&:hover fieldset': { borderColor: 'rgba(139,115,85,0.3)' },
+                      '&.Mui-focused fieldset': { borderColor: '#8B7355' }
+                    }
+                  }}
+                />
+              </Box>
+            )}
+          </Box>
+        );
+      })}
+
+      <Button
+        variant="text"
+        size="small"
+        onClick={handleAdd}
+        sx={{
+          color: '#8B7355',
+          bgcolor: 'rgba(139,115,85,0.05)',
+          borderRadius: '8px',
+          py: 1,
+          '&:hover': { bgcolor: 'rgba(139,115,85,0.1)' },
+          display: 'flex',
+          gap: 1
+        }}
+      >
+        <Plus size={16} /> {t('panel_memory_add')}
+      </Button>
+    </Box>
+  );
+});
+
 const Panel: React.FC<Props> = observer(({ store, open, anchorPos, onClose, onAbort }) => {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<'settings' | 'about'>('settings');
 
   if (!open) return null;
@@ -136,8 +327,8 @@ const Panel: React.FC<Props> = observer(({ store, open, anchorPos, onClose, onAb
               indicatorColor="secondary"
               sx={{ minHeight: 24, '& .MuiTab-root': { minHeight: 24, px: 1.2, fontSize: 12 } }}
             >
-              <Tab value="settings" label="设置" />
-              <Tab value="about" label="关于" />
+              <Tab value="settings" label={t('panel_tab_settings')} />
+              <Tab value="about" label={t('panel_tab_about')} />
             </Tabs>
           </div>
           <div className="dt-panel-close" onClick={onClose} role="button" tabIndex={0}>
@@ -148,12 +339,12 @@ const Panel: React.FC<Props> = observer(({ store, open, anchorPos, onClose, onAb
         {activeTab === 'about' && (
           <Box className="dt-panel-body" sx={{ flex: 1, p: 2.5, textAlign: 'center' }}>
             <Info size={44} style={{ color: '#8B7355', margin: '0 auto 14px auto', display: 'block' }} />
-            <Typography variant="h6" sx={{ mb: 0.8, color: '#1a1a1a' }}>G-Master 深度思考</Typography>
+            <Typography variant="h6" sx={{ mb: 0.8, color: '#1a1a1a' }}>G-Master</Typography>
             <Typography sx={{ fontSize: 13, color: '#666', mb: 2.2 }}>
-              一个为 Gemini 注入深度思考和 Agent 能力的扩展。
+              {t('panel_about_desc')}
             </Typography>
             <Box sx={{ p: 2, bgcolor: '#f5f5f5', borderRadius: 2 }}>
-              <Typography sx={{ fontWeight: 700, color: '#333' }}>作者：Onion</Typography>
+              <Typography sx={{ fontWeight: 700, color: '#333' }}>{t('panel_about_author')}</Typography>
               <Typography sx={{ mt: 0.5, fontSize: 12, color: '#888' }}>from NUS MIT</Typography>
             </Box>
           </Box>
@@ -163,19 +354,19 @@ const Panel: React.FC<Props> = observer(({ store, open, anchorPos, onClose, onAb
           <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, overflowY: 'auto' }}>
             {/* ── 主开关行 ── */}
             <Box className="dt-toggle-row" sx={{ borderBottom: '1px solid #ebebeb', gap: 1 }}>
-              <Typography className="dt-toggle-label">运行模式</Typography>
               <ToggleButtonGroup
                 exclusive
                 size="small"
                 value={store.agentMode}
+                sx={{ width: '100%' }}
                 onChange={(_event, value) => {
                   const nextMode = value as 'off' | 'on' | 'auto' | null;
                   if (nextMode) handleModeChange(nextMode);
                 }}
               >
-                <ToggleButton value="off">关闭</ToggleButton>
-                <ToggleButton value="on">深度思考(ON)</ToggleButton>
-                <ToggleButton value="auto">Agent(AUTO)</ToggleButton>
+                <ToggleButton sx={{ flex: 1, whiteSpace: 'nowrap' }} value="off">{t('panel_mode_off')}</ToggleButton>
+                <ToggleButton sx={{ flex: 1, whiteSpace: 'nowrap' }} value="on">{t('panel_mode_on')}</ToggleButton>
+                <ToggleButton sx={{ flex: 1, whiteSpace: 'nowrap' }} value="auto">{t('panel_mode_auto')}</ToggleButton>
               </ToggleButtonGroup>
             </Box>
 
@@ -186,12 +377,12 @@ const Panel: React.FC<Props> = observer(({ store, open, anchorPos, onClose, onAb
                 {store.isSummarizing ? (
                   <>
                     <Sparkles size={12} style={{ color: '#6B8B6B' }} />
-                    <Typography className="dt-status-text">正在生成最终总结…</Typography>
+                    <Typography className="dt-status-text">{t('panel_status_summarizing')}</Typography>
                   </>
                 ) : (
                   <>
                     <Loader2 size={12} style={{ color: '#8B7355', animation: 'dtIconSpin 1s linear infinite' }} />
-                    <Typography className="dt-status-text">第 {store.currentLoop} 轮深度思考中</Typography>
+                    <Typography className="dt-status-text">{t('panel_status_thinking', { loop: store.currentLoop })}</Typography>
                   </>
                 )}
               </Box>
@@ -200,26 +391,27 @@ const Panel: React.FC<Props> = observer(({ store, open, anchorPos, onClose, onAb
             {/* ── 配置正文 ── */}
             <Stack className="dt-panel-body" spacing={1.4}>
 
-              <Typography className="dt-section-label">全能 Agent 功能配置 (AUTO模式)</Typography>
+              <Typography className="dt-section-label">{t('panel_agent_config')} </Typography>
 
               <TextField
-                label="Tavily API Key"
-                  type="password"
-                  placeholder="输入 Tavily API Key"
-                  value={store.config.tavilyApiKey}
-                  onChange={(e) => store.updateConfig({ tavilyApiKey: e.target.value })}
+                label={t('settings_tavily_key')}
+                type="password"
+                placeholder={t('panel_tavily_placeholder')}
+                value={store.config.tavilyApiKey}
+                onChange={(e) => store.updateConfig({ tavilyApiKey: e.target.value })}
                 fullWidth
                 size="small"
               />
               <Typography sx={{ fontSize: 11, color: '#666' }}>
-                Tavily 开关请在输入框下方工具栏中使用（位于“深度思考”按钮右侧）。
+                {t('settings_tavily_desc')}
               </Typography>
               {!store.config.tavilyApiKey && store.config.tavilyEnabled && (
                 <Alert severity="warning" sx={{ py: 0.2, '& .MuiAlert-message': { fontSize: 11 } }}>
-                  已开启 Tavily，但未填写 API Key，联网搜索将失败。
+                  {t('settings_tavily_warn')}
                 </Alert>
               )}
 
+              {/* 未来再上架
               <FormControlLabel
                 control={(
                   <Switch
@@ -249,40 +441,71 @@ const Panel: React.FC<Props> = observer(({ store, open, anchorPos, onClose, onAb
                   </Typography>
                 </Box>
               )}
+              */}
+
+              <Divider sx={{ my: 0.8 }} />
+              <Typography className="dt-section-label" sx={{ mt: 0.6 }}>
+                <Pin size={10} style={{ display: 'inline', marginRight: 4, verticalAlign: 'middle' }} />
+                {t('panel_memory_title')}
+              </Typography>
+              <Typography sx={{ fontSize: 11, color: '#666', mb: 1 }}>
+                {t('panel_memory_desc')}
+              </Typography>
+              <MemoryCardList store={store} />
 
               <Divider sx={{ my: 0.8 }} />
               <Typography className="dt-section-label" sx={{ mt: 0.6 }}>
                 <Settings2 size={10} style={{ display: 'inline', marginRight: 4, verticalAlign: 'middle' }} />
-                循环设置
+                {t('settings_loop')}
               </Typography>
 
               <TextField
                 select
-                label="循环思考使用的模型"
+                label={t('settings_language')}
+                value={store.config.language || 'zh'}
+                onChange={(e) => store.updateConfig({ language: e.target.value as 'zh' | 'en' })}
+                size="small"
+                fullWidth
+                SelectProps={{
+                  MenuProps: { style: { zIndex: 2147483647 } }
+                }}
+              >
+                <MenuItem value="zh">简体中文</MenuItem>
+                <MenuItem value="en">English</MenuItem>
+              </TextField>
+
+              <TextField
+                select
+                label={t('settings_loop_model')}
                 value={store.config.loopModel}
                 onChange={(e) => store.updateConfig({ loopModel: e.target.value as LoopModel })}
                 size="small"
                 fullWidth
+                SelectProps={{
+                  MenuProps: {
+                    style: { zIndex: 2147483647 }, // 提升层级，保证能显示在最前面
+                  },
+                }}
               >
-                <MenuItem value="fast">Flash (快速)</MenuItem>
-                <MenuItem value="think">Think (思考)</MenuItem>
-                <MenuItem value="pro">Pro (旗舰)</MenuItem>
+                <MenuItem value="fast">{t('settings_model_fast')}</MenuItem>
+                <MenuItem value="think">{t('settings_model_think')}</MenuItem>
+                <MenuItem value="pro">{t('settings_model_pro')}</MenuItem>
               </TextField>
 
               <NumField
-                label="最大思考轮次"
+                label={t('settings_max_loops')}
                 value={store.config.maxLoops}
                 min={1}
                 onChange={(v) => store.updateConfig({ maxLoops: v })}
               />
               <NumField
-                label="最少强制轮次"
+                label={t('settings_min_loops')}
                 value={store.config.minLoops}
                 min={1}
                 onChange={(v) => store.updateConfig({ minLoops: v })}
               />
               <NumField
-                label="轮次延迟（ms）"
+                label={t('settings_loop_delay')}
                 value={store.config.loopDelay}
                 min={0}
                 step={100}
@@ -292,11 +515,11 @@ const Panel: React.FC<Props> = observer(({ store, open, anchorPos, onClose, onAb
               <Divider sx={{ my: 0.8 }} />
               <Typography className="dt-section-label" sx={{ mt: 0.6 }}>
                 <CheckCircle2 size={10} style={{ display: 'inline', marginRight: 4, verticalAlign: 'middle' }} />
-                审查视角
+                {t('settings_review_phases')}
               </Typography>
 
               <TextField
-                label="每行一个视角"
+                label={t('settings_review_placeholder')}
                 multiline
                 minRows={6}
                 value={(Array.isArray(store.config.reviewPhases) ? store.config.reviewPhases : []).join('\n')}
@@ -308,7 +531,7 @@ const Panel: React.FC<Props> = observer(({ store, open, anchorPos, onClose, onAb
               />
 
               <Typography className="dt-section-label" sx={{ mt: 1.2 }}>
-                系统提示词模板
+                {t('settings_system_prompt')}
               </Typography>
 
               <TextField
@@ -316,6 +539,7 @@ const Panel: React.FC<Props> = observer(({ store, open, anchorPos, onClose, onAb
                 minRows={9}
                 value={store.config.systemPromptTemplate}
                 onChange={(e) => store.updateConfig({ systemPromptTemplate: e.target.value })}
+                onBlur={() => store.flushPersist()}
                 fullWidth
               />
 
@@ -326,7 +550,7 @@ const Panel: React.FC<Props> = observer(({ store, open, anchorPos, onClose, onAb
                   size="small"
                   onClick={handleResetAll}
                 >
-                  重置所有设置与存储
+                  {t('settings_reset_all')}
                 </Button>
               </Box>
 

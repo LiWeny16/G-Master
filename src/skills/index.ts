@@ -10,6 +10,7 @@ export interface AgentSkill {
   description: string;
   toolNames: string[];
   systemPromptFragment: string;
+  systemPromptFragmentEn?: string;
 }
 
 export const allSkills: AgentSkill[] = [
@@ -22,6 +23,11 @@ export const allSkills: AgentSkill[] = [
       '【联网搜索】仅在缺证据或需核对时效时触发。必须使用下方括号格式（一行内）：',
       TOOL_CALL_WEB_SEARCH,
       '发出后勿编造检索结果；等待宿主在对话中追加 [TOOL_RESULT: web_search] 后再继续。',
+    ].join('\n'),
+    systemPromptFragmentEn: [
+      '[Web Search] Trigger only when lacking evidence or needing to verify timeliness. You MUST use the bracket format below (single line):',
+      TOOL_CALL_WEB_SEARCH,
+      'Do not fabricate search results; wait for the host to append [TOOL_RESULT: web_search] in the conversation before proceeding.',
     ].join('\n'),
   },
   {
@@ -37,12 +43,20 @@ export const allSkills: AgentSkill[] = [
       TOOL_CALL_LOCAL_FILE_WRITE,
       '写入前复述意图与路径；路径不明则先追问。',
     ].join('\n'),
+    systemPromptFragmentEn: [
+      '[Local Files] Read: read_local_file / Write: write_local_file. Path must be a relative path within the authorized workspace. ".." is forbidden.',
+      'Read example:',
+      '[TOOL_CALL: read_local_file({"path":"<relative_path>"})]',
+      'Write example:',
+      '[TOOL_CALL: write_local_file({"path":"<relative_path>","content":"<full file content>"})]',
+      'State intent and confirm path before writing. If path is unclear, ask first.',
+    ].join('\n'),
   },
 ];
 
-export function buildToolsSystemPrompt(skills: AgentSkill[]): string {
+export function buildToolsSystemPrompt(skills: AgentSkill[], lang: 'zh' | 'en' = 'zh'): string {
   return skills
-    .map((s) => s.systemPromptFragment.trim())
+    .map((s) => (lang === 'en' && s.systemPromptFragmentEn ? s.systemPromptFragmentEn : s.systemPromptFragment).trim())
     .filter(Boolean)
     .join('\n\n');
 }

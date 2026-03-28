@@ -1,9 +1,10 @@
-import { makeAutoObservable, runInAction } from 'mobx';
-import { DeepThinkConfig, DEFAULT_CONFIG, EnginePhase, AgentMode } from '../types';
+import { makeAutoObservable, runInAction, toJS } from 'mobx';
+import { DeepThinkConfig, DEFAULT_CONFIG, EnginePhase, AgentMode, getReviewPhases, getSystemPromptTemplate } from '../types';
 import { PersistService } from '../services/persist-service';
+import i18n from '../i18n';
 
 export class StateStore {
-  // === 运行时状态（不持久化） ===
+  // === 运行时状态（不持久化） / Runtime State (Not Persisted) ===
   agentMode: AgentMode = 'off';
   isGenerating = false;
   currentLoop = 0;
@@ -13,15 +14,15 @@ export class StateStore {
   lastRawText = '';
   isPanelOpen = false;
 
-  /** 全能工作流阶段（意图 / 主深度） */
+  /** 全能工作流阶段（意图 / 主深度） / Universal workflow phase (Intent / Deep) */
   userWorkflowPhase: 'none' | 'intent' | 'deep' = 'none';
   lastIntentSummary = '';
-  /** 当前用户提问轮内，已连续工具回合次数（防刷） */
+  /** 当前用户提问轮内，已连续工具回合次数（防刷） / Consecutive tool call rounds in current user turn (Anti-spam) */
   toolCallRoundsThisSession = 0;
-  /** AUTO 模式本轮动态规划的深度轮次（null 表示使用常规配置） */
+  /** AUTO 模式本轮动态规划的深度轮次（null 表示使用常规配置） / Dynamically planned deep loops for the current round in AUTO mode (null means fallback to default config) */
   plannedDeepLoops: number | null = null;
 
-  // === 用户配置（持久化） ===
+  // === 用户配置（持久化） / User Config (Persisted) ===
   config: DeepThinkConfig = { ...DEFAULT_CONFIG };
 
   private persistTimer: ReturnType<typeof setTimeout> | null = null;
@@ -87,7 +88,7 @@ export class StateStore {
   }
 
   updateConfig(partial: Partial<DeepThinkConfig>): void {
-    // 范围校验
+    // 范围校验 / Range Validation
     if (partial.maxLoops !== undefined) {
       partial.maxLoops = Math.max(1, partial.maxLoops);
     }
@@ -100,10 +101,23 @@ export class StateStore {
     if (partial.maxToolRoundsPerTurn !== undefined) {
       partial.maxToolRoundsPerTurn = Math.max(1, Math.min(50, partial.maxToolRoundsPerTurn));
     }
-    // minLoops 不能超过 maxLoops
-    const newConfig = { ...this.config, ...partial };
+    // 将 partial 中可能含有的 observable 代理剥离为纯 JS 对象 / Strip observable proxies from partial into a plain JS object
+    const plainPartial = toJS(partial);
+    const newConfig = { ...toJS(this.config), ...plainPartial };
+    // minLoops 不能超过 maxLoops / minLoops cannot exceed maxLoops
     if (newConfig.minLoops > newConfig.maxLoops) {
       newConfig.minLoops = newConfig.maxLoops;
+    }
+    if (newConfig.language !== this.config.language) {
+      // 当语言切换时，如果系统设置是当前语言的默认值（未被用户修改），则自动切换到新语言的默认值
+      // When language switches, if the system config is at the default value of the old language, automatically switch it to the default of the new language
+      if (this.config.reviewPhases.join('\n') === getReviewPhases(this.config.language).join('\n')) {
+        newConfig.reviewPhases = getReviewPhases(newConfig.language);
+      }
+      if (this.config.systemPromptTemplate === getSystemPromptTemplate(this.config.language, this.config.markers)) {
+        newConfig.systemPromptTemplate = getSystemPromptTemplate(newConfig.language, newConfig.markers);
+      }
+      i18n.changeLanguage(newConfig.language);
     }
     this.config = newConfig;
     this.debouncedPersist();
@@ -126,7 +140,7 @@ export class StateStore {
         }
         return;
       }
-      // 与默认值深度合并，防止旧存档缺字段或字段类型错误
+      // 与默认值深度合并，防止旧存档缺字段或字段类型错误 / Deep merge with defaults to prevent missing fields or wrong types in old saves
       this.config = {
         ...DEFAULT_CONFIG,
         ...saved,
@@ -138,22 +152,45 @@ export class StateStore {
         tavilyApiKey: typeof saved.tavilyApiKey === 'string' ? saved.tavilyApiKey : DEFAULT_CONFIG.tavilyApiKey,
         tavilyEnabled: typeof saved.tavilyEnabled === 'boolean' ? saved.tavilyEnabled : DEFAULT_CONFIG.tavilyEnabled,
         localFolderEnabled: typeof saved.localFolderEnabled === 'boolean' ? saved.localFolderEnabled : DEFAULT_CONFIG.localFolderEnabled,
+        // 显式校验 pinnedMemories — 确保结构正确 / Explicitly validate pinnedMemories - Ensure structure is correct
+        pinnedMemories: Array.isArray(saved.pinnedMemories)
+          ? saved.pinnedMemories.map((m: Record<string, unknown>) => ({
+            id: typeof m.id === 'string' ? m.id : String(Date.now()),
+            title: typeof m.title === 'string' ? m.title : '',
+            content: typeof m.content === 'string' ? m.content : '',
+            enabled: typeof m.enabled === 'boolean' ? m.enabled : true,
+          }))
+          : DEFAULT_CONFIG.pinnedMemories,
+        // 显式校验 systemPromptTemplate / Explicitly validate systemPromptTemplate
+        systemPromptTemplate: typeof saved.systemPromptTemplate === 'string' && saved.systemPromptTemplate.trim()
+          ? saved.systemPromptTemplate
+          : DEFAULT_CONFIG.systemPromptTemplate,
         maxToolRoundsPerTurn:
           typeof saved.maxToolRoundsPerTurn === 'number'
             ? saved.maxToolRoundsPerTurn
             : DEFAULT_CONFIG.maxToolRoundsPerTurn,
+        language: ['zh', 'en'].includes(saved.language as string) ? saved.language : DEFAULT_CONFIG.language,
       };
 
       if (this.agentMode === 'off' && this.config.tavilyEnabled) {
         this.config = { ...this.config, tavilyEnabled: false };
       }
+
+      i18n.changeLanguage(this.config.language);
     });
   }
 
   private debouncedPersist(): void {
     if (this.persistTimer) clearTimeout(this.persistTimer);
     this.persistTimer = setTimeout(() => {
-      PersistService.save(this.config);
+      // toJS 剥离 MobX proxy，确保 chrome.storage.local 能正确序列化 / toJS strips MobX proxy, ensuring chrome.storage.local serializes correctly
+      PersistService.save(toJS(this.config));
     }, 500);
+  }
+
+  /** 立即持久化（用于关键字段变更如记忆编辑等，防止刷新丢失） / Immediate persist (used for critical changes like memory edits to prevent loss on refresh) */
+  flushPersist(): void {
+    if (this.persistTimer) clearTimeout(this.persistTimer);
+    PersistService.save(toJS(this.config));
   }
 }
