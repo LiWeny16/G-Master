@@ -25,15 +25,7 @@ G-Master is a powerful browser extension based on Manifest V3, specially designe
 
 ### Interface & Features
 <div align="center">
-  <img src="public/images/eg1.png" alt="Settings & Interface" width="48%" />
-  <img src="public/images/eg2.png" alt="Deep Think in Action" width="48%" />
-</div>
-
-<br/>
-
-<div align="center">
-  <b>▶️ Deep Think Demo</b><br/>
-  <video src="public/videos/demo.mp4" controls="controls" width="80%" muted></video>
+  <img src="docs/images/poster.png" alt="G-Master Poster" width="100%" />
 </div>
 
 ---
@@ -145,15 +137,7 @@ G-Master 是一个基于 Manifest V3 的强大浏览器扩展，专为强化 Gem
 
 ### 界面与特性
 <div align="center">
-  <img src="public/images/eg1.png" alt="设置与交互界面" width="48%" />
-  <img src="public/images/eg2.png" alt="深度思考过程中" width="48%" />
-</div>
-
-<br/>
-
-<div align="center">
-  <b>▶️ 深度思考与搜索演示</b><br/>
-  <video src="public/videos/demo.mp4" controls="controls" width="80%" muted></video>
+  <img src="docs/images/poster.png" alt="G-Master Poster" width="100%" />
 </div>
 
 ---
