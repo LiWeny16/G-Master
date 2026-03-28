@@ -1,0 +1,23 @@
+Extension Introduction
+G-Master is a productivity extension that enhances the capabilities of large language models such as Gemini through multi-turn Deep Think, custom system prompts and Tavily connected search. It provides users with an enhanced conversation experience via web page injection and a sidebar.
+
+Pre-test Preparation
+Test Account: This extension does not require mandatory registration of a dedicated account. Since its core function is to enhance large language models, testers shall prepare and log in to any web-based large language model platform that supports standard conversations, such as Google Gemini.
+API Key (Optional): If testers need to experience advanced features including Tavily connected search, a test key has been built into the code. Testers can also enter their own API Key at any time in the extension's Settings panel.
+
+Test Step Guide
+Install and enable the G-Master extension.
+Open any web page, and the G-Master floating ball or sidebar panel will appear at the edge of the page.
+Click to expand the panel, and you will see a regular conversation input box and functional toggles above it.
+Test Deep Think: Turn on the Deep Think switch. Enter a question requiring logical reasoning in the input box, for example, How to divide three apples among four people in the most reasonable way?. After submission, you can observe the multi-turn self-game and error correction reasoning chain displayed in the extension panel, and the final answer will be presented.
+Test System Prompt: Click to enter Settings, and input content like You are a rigorous mathematics professor in the System Prompt area. Return to the conversation and check whether the model answers questions in the tone of a mathematics professor.
+Test Connected Search: Ask the model to query today's news or recent events, and observe whether the extension calls an external search service to obtain the latest facts during the reasoning process.
+
+Permissions Justification
+To implement the above functions properly, we have applied for the following core permissions in manifest.json, which are hereby explained for review:
+
+storage: Used to securely store users' various preference settings, system prompts and tool configurations locally.
+scripting / activeTab: Used to inject the custom floating ball and sidebar UI into the web page currently browsed by the user, allowing users to call up the enhanced conversation panel at any time.
+Host Permissions: Used to initiate cross-site API requests to large language model servers and third-party search engines such as Tavily in the background to obtain content and knowledge search results.
+
+If you encounter any obstacles during testing, please reject the submission and leave feedback at any time. We will cooperate with modifications as soon as possible. Thank you for your hard work!
