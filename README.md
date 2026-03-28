@@ -1,7 +1,7 @@
 <div align="center">
   <img src="public/icons/icon-origin.png" alt="G-Master Logo" width="128" />
   <h1>G-Master</h1>
-  <p><em>Injecting Soul into Gemini: Multi-turn Deep Think, Self-Review, and Auto-Correction Engine</em></p>
+  <p><em>Injecting Soul into Gemini: Multi-turn Deep Think, System Prompts, and Search Engines</em></p>
 
   [English](README.md) | [简体中文](README_CN.md)
   <br/><br/>
@@ -15,19 +15,23 @@
 
 <br/>
 
-G-Master is a powerful browser extension based on Manifest V3, specially designed to enhance Gemini. It introduces a true **Multi-turn Deep Think** mode, **Review Perspectives**, and a **Robust Local/Network Toolchain Extension**.
+G-Master is a powerful browser extension based on Manifest V3, specially designed to enhance Gemini. It introduces a true **Multi-turn Deep Think** mode, customizable **System Prompts**, real-time **Context & Intelligence Level** monitoring, and a built-in **Tavily Search** extension.
 
 ---
 
-## 📸 Demonstration / Usage
+## 📸 Demonstration & Usage
 
-### Video Demo
-<video src="public/videos/demo.mp4" controls="controls" width="100%" muted></video>
-
-### Screenshots
+### Interface & Features
 <div align="center">
   <img src="public/images/eg1.png" alt="Settings & Interface" width="48%" />
   <img src="public/images/eg2.png" alt="Deep Think in Action" width="48%" />
+</div>
+
+<br/>
+
+<div align="center">
+  <b>▶️ Deep Think Demo</b><br/>
+  <video src="public/videos/demo.mp4" controls="controls" width="80%" muted></video>
 </div>
 
 ---
@@ -35,46 +39,50 @@ G-Master is a powerful browser extension based on Manifest V3, specially designe
 ## 🚀 Core Features
 
 - 🔄 **Multi-turn Deep Think Loop**: Drives the LLM to engage in self-play, deduction, and error correction.
-- 🕵️ **Multi-dimensional Review**: Automatically checks for logical flaws and factual errors, ensuring rigorous output.
-- 🌐 **Seamless Toolchain**: Built-in Tavily online search, breaking the temporal boundaries of knowledge bases.
-- 📁 **Local Workspace Support**: Breaks sandbox limits, directly interacting with local files.
+- 🎯 **System Prompt Management**: Inject persistent system context and roles into Gemini seamlessly.
+- 📊 **Context & Intelligence Monitoring**: Real-time visual panel of context usage and reasoning intelligence levels.
+- 🌐 **Tavily Web Search**: Built-in online search breaking the temporal boundaries of base models.
+- 📁 **Local Workspace Support**: Run Sandbox JS and interact directly with local files.
 
 ---
 
-## 📈 Performance
+## 📊 Performance Leap
 
-After introducing G-Master's deep think loop, Gemini's metrics have seen significant leaps. Especially when facing complex logic and coding tasks, overall performance **improved by over 40%**!
+After introducing G-Master's deep think loop, Gemini's metrics see significant leaps, improving overall task execution by **over 40%**.
+
+<div align="center">
+  <img src="public/images/performance_comparison.png" alt="Performance Comparison: Standard vs G-Master" width="80%" />
+</div>
 
 | Evaluation Dimension | 🤖 Standard Gemini | 🌟 G-Master Deep Think | Improvement |
 | :--- | :---: | :---: | :---: |
-| **Complex Logic Accuracy** | 65% | **92%** | 🚀 **+41%** |
-| **Hallucination Frequency** | 12% | **< 2%** | 📉 **-83%** |
-| **Code One-pass Rate** | 55% | **88%** | 🚀 **+60%** |
-| **Thought Chain Completeness** | Single Linear | **Tree/Graph Branches** | 🧠 **Dimension Upgrade** |
-| **Overall Output Quality** | ⭐️⭐️⭐️ | ⭐️⭐️⭐️⭐️⭐️ | 📈 **~40% Overall Enhancement** |
+| **Complex Logic** | 65% | **92%** | 🚀 **+41%** |
+| **Hallucination Rate**| 12% | **< 2%** | 📉 **-83%** |
+| **Code One-pass** | 55% | **88%** | 🚀 **+60%** |
+| **Thought Chain** | Single Linear | **Tree Branches** | 🧠 **Upgraded** |
 
 ---
 
-## 🧠 How it works
+## 🧠 Architecture WorkFlow
 
-G-Master is not simply a prompt injection, but introduces an engineered think-feedback structure:
+G-Master introduces an engineered think-feedback structure.
 
 ```mermaid
 graph TD
-    A[User Input] --> B{G-Master: Need to think?}
+    A[User Input + System Prompt] --> B{G-Master: Need to think?}
     B -- No --> C[Standard LLM Output]
     B -- Yes --> D[Initiate Deep Think Loop]
     
     subgraph Loop [♻️ Deep Think Feedback Loop]
     D --> E[Deduction & Drafting]
-    E --> F[Multi-dimensional Review]
-    F --> |Flaws found/Verification needed| G[Invoke Toolchain/Tavily/Local R/W]
+    E --> F[Multi-dimensional Review / Context Monitor]
+    F --> |Flaws found/Verify| G[Invoke Toolchain: Tavily / Local R/W]
     G --> E
-    F --> |Logically rigorous, bulletproof| H[Exit Loop]
+    F --> |Logically rigorous| H[Exit Loop]
     end
     
     H --> I((Extract High-Quality Answer))
-    I --> J[Display elegantly in visual panel]
+    I --> J[Display smartly in visual panel]
     
     style I fill:#4CAF50,stroke:#388E3C,stroke-width:2px,color:#fff
     style D fill:#D84315,stroke:#EF6C00,stroke-width:2px,color:#fff
@@ -82,7 +90,7 @@ graph TD
 
 ---
 
-## 🛠️ Local Development Guide
+## 🛠️ Quick Developer Guide
 
 1. **Install Dependencies**
    ```bash
@@ -92,47 +100,17 @@ graph TD
    ```bash
    pnpm dev
    ```
-3. **Production Build**
+3. **Build Extension**
    ```bash
    pnpm build
    ```
-   > Output will be in the `dist` directory.
-
-### Icons
-Standard extension icons are configured and linked in `manifest.json`:
-- `public/icons/icon-16.png` ~ `128.png`
-Replace them with the same dimensions if needed.
-
----
-
-## 📦 Automated Publishing (Edge Store)
-
-This project integrates a powerful GitHub Actions workflow (`.github/workflows/publish-edge.yml`) for automated publishing.
-
-**Triggers:**
-1. **Manual**: Go to the `Actions` page, select the workflow, and click `Run workflow`.
-2. **Tags**: Push a tag like `v1.0.1` to automatically trigger deployment.
-
-> **💡 Prerequisites (Secrets):**
-> Go to repository `Settings -> Secrets and variables -> Actions` and add:
-> - `EDGE_PRODUCT_ID`: Extension ID from Edge Partner Center
-> - `EDGE_API_KEY`: Edge Publish API Key
-> - `EDGE_CLIENT_ID`: Edge Publish API Client ID
-> - `EDGE_NOTES_FOR_CERTIFICATION`: (Optional) Notes to certifiers
+   > Load the `dist` directory in your browser's extension panel.
 
 ---
 
 ## 📝 License
 
-This project is open source and protected under the [MIT License](LICENSE). Explore freely and create relentlessly!
-
----
-
-## ☕ Buy me a coffee
-
-If G-Master has helped you or saved you valuable time, feel free to buy me a coffee! Your support is my major motivation for continuous iteration ❤️
-
-<a href="https://www.buymeacoffee.com/G-Master" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 50px !important;width: 180px !important;" ></a>
+This project is open source and protected under the [MIT License](LICENSE).
 
 <div align="center">
   <br/>
