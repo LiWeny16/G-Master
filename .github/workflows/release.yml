@@ -57,5 +57,5 @@ jobs:
         with:
           tag_name: ${{ steps.release_tag.outputs.tag }}
           files: release/*.zip
-          generate_release_notes: true
+          body_path: .github/RELEASE_BODY.md
           fail_on_unmatched_files: true
