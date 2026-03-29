@@ -487,5 +487,5 @@ export function useInlineToggle(
       tavilyBtn = null;
       tokenMeter = null;
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [enabled]); // eslint-disable-line react-hooks/exhaustive-deps
 }

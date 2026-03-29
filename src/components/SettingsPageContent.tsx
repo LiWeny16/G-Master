@@ -25,6 +25,18 @@ const DoubaoIcon: React.FC = () => (
     <path d="M12 2C8.13 2 5 5.13 5 9c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26C17.81 13.47 19 11.38 19 9c0-3.87-3.13-7-7-7zm1 13.72V16h-2v-.28C8.52 14.82 7 12.04 7 9c0-2.76 2.24-5 5-5s5 2.24 5 5c0 3.04-1.52 5.82-4 6.72zM9 18v1c0 1.66 1.34 3 3 3s3-1.34 3-3v-1H9z" />
   </svg>
 );
+
+const KimiIcon: React.FC = () => (
+  <svg viewBox="0 0 24 24" width="100%" height="100%" fill="currentColor">
+    <path d="M12 2a10 10 0 1 0 0 20A10 10 0 0 0 12 2zm-1 14.5V14l-3 2.5V14l3-2.5L8 9h2.5l1.5 2 1.5-2H16l-3 2.5 3 2.5v2.5l-3-2.5v2.5h-2z" />
+  </svg>
+);
+
+const ZhipuIcon: React.FC = () => (
+  <svg viewBox="0 0 24 24" width="100%" height="100%" fill="currentColor">
+    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3l2.5 5.5L20 12l-5.5 2.5L12 20l-2.5-5.5L4 12l5.5-2.5L12 5z" />
+  </svg>
+);
 import {
   Alert,
   Box,
@@ -231,6 +243,8 @@ const SettingsPageContent: React.FC<Props> = ({ popupMode = false }) => {
                   { key: 'gemini', label: t('settings_site_gemini'), Icon: GeminiIcon },
                   { key: 'doubao', label: t('settings_site_doubao'), Icon: DoubaoIcon },
                   { key: 'chatgpt', label: t('settings_site_chatgpt'), Icon: ChatGPTIcon },
+                  { key: 'kimi', label: t('settings_site_kimi'), Icon: KimiIcon },
+                  { key: 'zhipu', label: t('settings_site_zhipu'), Icon: ZhipuIcon },
                 ] as const
               ).map(({ key, label, Icon }) => {
                 const enabled = config.siteEnabled?.[key] ?? true;

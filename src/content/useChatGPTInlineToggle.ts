@@ -283,5 +283,5 @@ export function useChatGPTInlineToggle(
       tavilyBtn = null;
       footerRow = null;
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [enabled]); // eslint-disable-line react-hooks/exhaustive-deps
 }

@@ -86,4 +86,6 @@ export default {
     settings_site_gemini: 'Gemini',
     settings_site_doubao: 'Doubao',
     settings_site_chatgpt: 'ChatGPT',
+    settings_site_kimi: 'Kimi',
+    settings_site_zhipu: 'Zhipu (z.ai)',
 };

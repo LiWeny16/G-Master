@@ -86,6 +86,8 @@ const zh = {
     settings_site_gemini: 'Gemini',
     settings_site_doubao: '豆包',
     settings_site_chatgpt: 'ChatGPT',
+    settings_site_kimi: 'Kimi',
+    settings_site_zhipu: '智谱 (z.ai)',
 };
 
 export default zh;

@@ -35,7 +35,8 @@
         "https://gemini.google.com/u/*/app*",
         "https://www.doubao.com/chat/*",
         "https://www.doubao.com/chat",
-        "https://chatgpt.com/*"
+        "https://chatgpt.com/*",
+        "https://chat.z.ai/*"
       ]
     }
   ],

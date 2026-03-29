@@ -1,17 +1,20 @@
 /**
- * 在豆包 (www.doubao.com) 工具栏注入「深度思考」开关按钮 + Tavily 开关。
- * 注入点：[data-testid="guidance-skill-bar"] 首子元素之前。
+ * 在智谱 AI（chat.z.ai）输入框工具栏注入「深度思考」开关 + Tavily 开关。
+ * 注入点：.flagsContainer 所在的父 flex 容器的末尾。
  * 使用 MobX autorun 保持按钮与 Store 同步；MutationObserver + 心跳
- * 应对 React SPA 路由切换时工具栏被卸载重建的问题。
+ * 应对 Svelte SPA 路由切换时输入区被卸载重建的问题。
+ *
+ * 支持 off / on / auto 三态切换。
  */
 import { useEffect, useRef } from 'react';
 import { autorun } from 'mobx';
 import { StateStore } from '../stores/state-store';
 import i18n from '../i18n';
 
-const SKILL_BAR_SEL = '[data-testid="guidance-skill-bar"]';
+/** 工具栏按钮所在的父容器：.flagsContainer 的 parentElement */
+const FLAGS_CONTAINER_SEL = '.flagsContainer';
 
-export function useDoubaoInlineToggle(
+export function useZhipuInlineToggle(
   store: StateStore,
   onToggle: () => void,
   onAbort: () => void,
@@ -27,34 +30,32 @@ export function useDoubaoInlineToggle(
     let btn: HTMLButtonElement | null = null;
     let tavilyBtn: HTMLButtonElement | null = null;
 
-    /* ── 公共按钮基础样式（匹配豆包 skill-bar-button 外观） ── */
     const BASE_STYLE = [
       'display:inline-flex',
       'align-items:center',
       'gap:5px',
-      'height:32px',
+      'height:30px',
       'padding:0 10px',
-      'border-radius:20px',
+      'border-radius:16px',
       'border:1px solid currentColor',
       'cursor:pointer',
       'font-family:inherit',
-      'font-size:14px',
+      'font-size:13px',
       'font-weight:400',
       'background:transparent',
       'outline:none',
       'flex-shrink:0',
       'transition:color .15s,border-color .15s,background-color .15s',
-      'margin-right:4px',
+      'margin-left:6px',
       'white-space:nowrap',
     ].join(';');
 
-    /* ── 根据 store 状态同步按钮外观 ── */
     function sync() {
-      const phase      = store.enginePhase;
-      const isActive   = store.isAgentEnabled;
-      const loop       = store.currentLoop;
+      const phase       = store.enginePhase;
+      const isActive    = store.isAgentEnabled;
+      const loop        = store.currentLoop;
       const summarizing = store.isSummarizing;
-      const tavilyOn   = store.config.tavilyEnabled;
+      const tavilyOn    = store.config.tavilyEnabled;
       const hasTavilyKey = store.config.tavilyApiKey.trim().length > 0;
 
       if (!btn || !document.contains(btn)) return;
@@ -79,22 +80,27 @@ export function useDoubaoInlineToggle(
             ? i18n.t('toggle_summarizing')
             : i18n.t('toggle_thinking', { loop: Math.max(1, loop) });
         }
-      } else if (isActive) {
-        sp.style.display  = 'none';
-        dot.style.display = 'block';
-        (dot as HTMLElement).style.background = '#8B7355';
-        btn.style.color   = '#8B7355';
-        btn.style.borderColor = '#8B7355';
-        btn.style.backgroundColor = 'rgba(139,115,85,.08)';
-        txt.textContent = store.agentMode === 'auto' ? i18n.t('toggle_auto') : i18n.t('toggle_on');
+        btn.title = store.config.language === 'en' ? 'Click to abort' : '点击中止';
       } else {
         sp.style.display  = 'none';
         dot.style.display = 'block';
-        (dot as HTMLElement).style.background = 'currentColor';
-        btn.style.color   = '';
-        btn.style.borderColor = '';
-        btn.style.backgroundColor = '';
-        txt.textContent = i18n.t('toggle_off');
+        if (isActive) {
+          btn.style.color   = '#1a73e8';
+          btn.style.borderColor = '#1a73e8';
+          btn.style.backgroundColor = 'rgba(26,115,232,.08)';
+          txt.textContent = store.agentMode === 'auto' ? i18n.t('toggle_auto') : i18n.t('toggle_on');
+          btn.title = store.config.language === 'en'
+            ? 'Deep Think ON — click to turn off'
+            : '深度思考已开启 — 点击关闭';
+        } else {
+          btn.style.color   = '';
+          btn.style.borderColor = '';
+          btn.style.backgroundColor = '';
+          txt.textContent = i18n.t('toggle_off');
+          btn.title = store.config.language === 'en'
+            ? 'Enable Deep Think'
+            : '开启深度思考';
+        }
       }
 
       // ── Tavily toggle ──
@@ -144,16 +150,17 @@ export function useDoubaoInlineToggle(
       }
     }
 
-    /* ── 注入按钮到豆包 guidance-skill-bar ── */
     function inject() {
-      const skillBar = document.querySelector<HTMLElement>(SKILL_BAR_SEL);
-      if (!skillBar) return;
+      const flagsEl = document.querySelector<HTMLElement>(FLAGS_CONTAINER_SEL);
+      if (!flagsEl) return;
+      const container = flagsEl.parentElement;
+      if (!container) return;
 
       /* 如已注入，复用引用 */
-      const existing      = skillBar.querySelector<HTMLButtonElement>('#dt-toggle');
-      const existingTavily = skillBar.querySelector<HTMLButtonElement>('#dt-tavily-toggle');
-      if (existing && existingTavily) {
-        btn = existing;
+      const existing       = document.querySelector<HTMLButtonElement>('#dt-toggle');
+      const existingTavily = document.querySelector<HTMLButtonElement>('#dt-tavily-toggle');
+      if (existing && existingTavily && document.contains(existing)) {
+        btn       = existing;
         tavilyBtn = existingTavily;
         sync();
         return;
@@ -161,13 +168,14 @@ export function useDoubaoInlineToggle(
       existing?.remove();
       existingTavily?.remove();
 
-      /* 创建 DT toggle */
+      /* ── DT toggle ── */
       btn = document.createElement('button');
       btn.id = 'dt-toggle';
+      btn.type = 'button';
       btn.style.cssText = BASE_STYLE;
       btn.innerHTML = `
         <div class="dt-tg-sp"
-          style="display:none;width:13px;height:13px;
+          style="display:none;width:12px;height:12px;
                  border:2px solid rgba(139,115,85,.25);
                  border-top-color:#8B7355;border-radius:50%;
                  animation:dtIconSpin .9s linear infinite;flex-shrink:0;"></div>
@@ -194,9 +202,10 @@ export function useDoubaoInlineToggle(
         }
       });
 
-      /* 创建 Tavily toggle */
+      /* ── Tavily toggle ── */
       tavilyBtn = document.createElement('button');
       tavilyBtn.id = 'dt-tavily-toggle';
+      tavilyBtn.type = 'button';
       tavilyBtn.style.cssText = BASE_STYLE;
       tavilyBtn.innerHTML = `
         <div class="dt-tv-dot"
@@ -212,16 +221,16 @@ export function useDoubaoInlineToggle(
         store.updateConfig({ tavilyEnabled: !store.config.tavilyEnabled });
       });
 
-      /* 插入到 skill-bar 的首位 */
-      skillBar.insertBefore(tavilyBtn, skillBar.firstChild);
-      skillBar.insertBefore(btn, skillBar.firstChild);
+      /* 追加到 .flagsContainer 所在行的末尾 */
+      container.appendChild(btn);
+      container.appendChild(tavilyBtn);
 
       sync();
 
-      /* React 偶尔会在注入后立刻重渲染，400ms 后验证存活 */
+      /* Svelte 偶尔会在注入后立刻重渲染，400ms 后验证存活 */
       setTimeout(() => {
         if ((btn && !document.contains(btn)) || (tavilyBtn && !document.contains(tavilyBtn))) {
-          btn = null;
+          btn       = null;
           tavilyBtn = null;
           inject();
         }
@@ -237,7 +246,7 @@ export function useDoubaoInlineToggle(
     });
     mutObs.observe(document.body, { childList: true, subtree: true });
 
-    /* 初始注入（等 React 渲染完成） */
+    /* 初始注入（等 Svelte 渲染完成） */
     setTimeout(inject, 900);
 
     /* 心跳兜底 */
