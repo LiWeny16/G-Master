@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { StateStore } from '../stores/state-store';
-import { GeminiAdapter } from '../adapters/gemini-adapter';
+import { createSiteAdapter, getSiteId } from '../adapters/adapter-factory';
 import { AgentOrchestrator } from '../core/agent-orchestrator';
 import { DeepThinkEngine } from '../core/deep-think-engine';
 import { DOMBeautifier } from '../core/dom-beautifier';
@@ -10,11 +10,14 @@ import FloatingBall from '../components/FloatingBall';
 import Panel from '../components/Panel';
 import ClarifyModal from '../components/ClarifyModal';
 import { useInlineToggle } from './useInlineToggle';
+import { useDoubaoInlineToggle } from './useDoubaoInlineToggle';
+import { useChatGPTInlineToggle } from './useChatGPTInlineToggle';
 import { GeminiConversationBulkDeleteController } from './gemini-bulk-delete';
 import i18n from '../i18n';
 
 const store = new StateStore();
-const adapter = new GeminiAdapter();
+const adapter = createSiteAdapter();
+const siteId = getSiteId();
 const engine = new DeepThinkEngine(adapter, store);
 const beautifier = new DOMBeautifier(adapter, store);
 const orchestrator = new AgentOrchestrator(adapter, store, engine);
@@ -44,12 +47,14 @@ const ContentApp: React.FC = observer(() => {
     domObserver.start();
     observerRef.current = domObserver;
 
-    // 对话侧边栏多选批量删除增强
-    bulkDeleteController.start();
+    // 对话侧边栏多选批量删除增强（仅 Gemini）
+    if (siteId === 'gemini') {
+      bulkDeleteController.start();
+    }
 
     // 拦截 Enter 键发送
     const handleKeydown = (e: KeyboardEvent) => {
-      if (e.key === 'Enter' && !e.shiftKey && document.activeElement?.closest('.ql-editor')) {
+      if (e.key === 'Enter' && !e.shiftKey && adapter.isEditorFocused()) {
         handleInterceptSend(e);
       }
     };
@@ -57,13 +62,13 @@ const ContentApp: React.FC = observer(() => {
     // 拦截发送按钮点击
     const handleClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
-      if (target.closest('.send-button:not(.stop)')) {
+      if (adapter.isSendButton(target)) {
         handleInterceptSend(e);
       }
       // 拦截停止按钮
-      const stopBtn = target.closest('.send-button.stop') as HTMLElement | null;
-      if (stopBtn && store.isAgentEnabled) {
-        const isAutoStop = stopBtn.getAttribute('data-dt-auto-stop') === '1';
+      if (adapter.isStopButton(target) && store.isAgentEnabled) {
+        const stopBtn = target.closest('button') as HTMLElement | null;
+        const isAutoStop = stopBtn?.getAttribute('data-dt-auto-stop') === '1';
         if (!isAutoStop) {
           engine.abort();
         }
@@ -76,7 +81,9 @@ const ContentApp: React.FC = observer(() => {
     return () => {
       document.removeEventListener('keydown', handleKeydown, true);
       document.removeEventListener('click', handleClick, true);
-      bulkDeleteController.stop();
+      if (siteId === 'gemini') {
+        bulkDeleteController.stop();
+      }
       domObserver.stop();
     };
   }, []);
@@ -90,28 +97,13 @@ const ContentApp: React.FC = observer(() => {
   };
 
   /**
-   * 用 insertText + 延迟点击的方式将追加文本和用户消息一起发送。
+   * 用 adapter.appendTextAndSend 追加文本后发送。
    * 内部已做 _injecting 锁防止重入。
    */
-  const appendTextAndSend = (editor: HTMLElement, textToAppend: string) => {
+  const doAppendTextAndSend = async (textToAppend: string) => {
     _injecting = true;
-
-    editor.focus();
-    const sel = window.getSelection();
-    const range = document.createRange();
-    range.selectNodeContents(editor);
-    range.collapse(false);
-    sel?.removeAllRanges();
-    sel?.addRange(range);
-    document.execCommand('insertText', false, textToAppend);
-    editor.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
-
-    setTimeout(() => {
-      const btn = document.querySelector('.send-button') as HTMLButtonElement | null;
-      if (btn && !btn.disabled && !btn.classList.contains('stop')) btn.click();
-      // 等发送完成再释放锁，给充裕的时间
-      setTimeout(() => { _injecting = false; }, 300);
-    }, 150);
+    await adapter.appendTextAndSend(textToAppend);
+    setTimeout(() => { _injecting = false; }, 300);
   };
 
   const handleInterceptSend = (e: Event) => {
@@ -126,10 +118,8 @@ const ContentApp: React.FC = observer(() => {
       return;
     }
 
-    const editor = document.querySelector('.ql-editor') as HTMLElement | null;
-    if (!editor || editor.innerText.trim() === '') return;
-
-    const userText = editor.innerText.trim();
+    const userText = adapter.getEditorText();
+    if (!userText) return;
 
     // === Case 1: 深度思考开启 — 走 AUTO 或 ON 流程 ===
     if (store.isAgentEnabled) {
@@ -149,7 +139,7 @@ const ContentApp: React.FC = observer(() => {
       const finalText = engine.interceptFirstSend(userText);
       if (!finalText) return;
 
-      appendTextAndSend(editor, store.config.systemPromptTemplate);
+      void doAppendTextAndSend(store.config.systemPromptTemplate);
       return;
     }
 
@@ -160,7 +150,7 @@ const ContentApp: React.FC = observer(() => {
     e.preventDefault();
     e.stopPropagation();
 
-    appendTextAndSend(editor, memoryText);
+    void doAppendTextAndSend(memoryText);
   };
 
   const handleTogglePanel = () => {
@@ -190,8 +180,14 @@ const ContentApp: React.FC = observer(() => {
     void orchestrator.resumeAfterClarify([]);
   };
 
-  /* 工具栏内联开关（仿 main.js injectUI，带旋转圈状态显示） */
-  useInlineToggle(store, handleToggleEngine, handleAbort);
+  /* 工具栏内联开关：Gemini / 豆包 / ChatGPT 各自注入 */
+  useInlineToggle(store, handleToggleEngine, handleAbort, siteId === 'gemini');
+  useDoubaoInlineToggle(store, handleToggleEngine, handleAbort, siteId === 'doubao');
+  useChatGPTInlineToggle(store, handleToggleEngine, handleAbort, siteId === 'chatgpt');
+
+  // 若当前网站被用户在设置中关闭，不渲染任何 UI
+  const isSiteEnabled = store.config.siteEnabled?.[siteId as 'gemini' | 'doubao' | 'chatgpt'] ?? true;
+  if (!isSiteEnabled) return null;
 
   return (
     <>

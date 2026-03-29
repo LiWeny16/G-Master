@@ -13,6 +13,7 @@ export function useInlineToggle(
   store: StateStore,
   onToggle: () => void,
   onAbort: () => void,
+  enabled: boolean = true,
 ) {
   /* 用 ref 持有最新回调，避免 effect 闭包陈旧 */
   const toggleRef = useRef(onToggle);
@@ -21,6 +22,7 @@ export function useInlineToggle(
   useEffect(() => { abortRef.current = onAbort; }, [onAbort]);
 
   useEffect(() => {
+    if (!enabled) return;
     let btn: HTMLButtonElement | null = null;
     let tavilyBtn: HTMLButtonElement | null = null;
     let tokenMeter: HTMLDivElement | null = null;

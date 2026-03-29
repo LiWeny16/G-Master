@@ -99,6 +99,43 @@ export class GeminiAdapter implements ISiteAdapter {
     });
   }
 
+  isEditorFocused(): boolean {
+    return !!document.activeElement?.closest(SEL.editor);
+  }
+
+  getEditorText(): string {
+    return (document.querySelector(SEL.editor) as HTMLElement)?.innerText?.trim() ?? '';
+  }
+
+  async appendTextAndSend(textToAppend: string): Promise<void> {
+    const editor = this.getEditor();
+    if (!editor) return;
+
+    editor.focus();
+    const sel = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(editor);
+    range.collapse(false);
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+    document.execCommand('insertText', false, textToAppend);
+    editor.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+
+    await new Promise<void>((resolve) => setTimeout(resolve, 150));
+    const btn = document.querySelector(SEL.sendButton) as HTMLButtonElement | null;
+    if (btn && !btn.disabled && !btn.classList.contains('stop')) {
+      btn.click();
+    }
+  }
+
+  isSendButton(target: HTMLElement): boolean {
+    return !!target.closest('.send-button:not(.stop)');
+  }
+
+  isStopButton(target: HTMLElement): boolean {
+    return !!target.closest('.send-button.stop');
+  }
+
   getUserBubbles(): NodeListOf<Element> {
     return document.querySelectorAll(SEL.queryText);
   }

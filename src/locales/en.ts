@@ -82,4 +82,8 @@ export default {
     settings_reset_default: 'Defaults',
     settings_reset_all: 'Reset All Data',
     settings_language: 'Language',
+    settings_site_section: 'Active Sites',
+    settings_site_gemini: 'Gemini',
+    settings_site_doubao: 'Doubao',
+    settings_site_chatgpt: 'ChatGPT',
 };

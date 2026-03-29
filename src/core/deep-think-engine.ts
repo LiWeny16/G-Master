@@ -70,45 +70,85 @@ export class DeepThinkEngine {
 
   buildReviewPrompt(nextQuestion: string): string {
     const { markers } = this.store.config;
+    const lang = this.store.config.language;
+    if (lang === 'en') {
+      return (
+        `[Self-Review Task]: ${nextQuestion}\n\n` +
+        `[Anchor Reminder] All reflections MUST revolve around the original question: "${this.store.originalQuestion}".\n\n` +
+        `Be strictly critical of your own reasoning. Provide factual sources and URLs. If you don't know, say so.\n` +
+        `You may ONLY output ${markers.finishMarker} to finish if: (a) arguments have evidence, (b) counterarguments have been checked, and (c) edge cases are covered.\n` +
+        `Otherwise, you MUST output ${markers.continueMarker} + [NEXT_PROMPT: ...] to continue.`
+      );
+    }
     return (
-      `[Self-Review Task]: ${nextQuestion}\n\n` +
-      `[Anchor Reminder] All reflections MUST revolve around the original question: "${this.store.originalQuestion}".\n\n` +
-      `Be strictly critical of your own reasoning. Provide factual sources and URLs. If you don't know, say so.\n` +
-      `You may ONLY output ${markers.finishMarker} to finish if: (a) arguments have evidence, (b) counterarguments have been checked, and (c) edge cases are covered.\n` +
-      `Otherwise, you MUST output ${markers.continueMarker} + [NEXT_PROMPT: ...] to continue.`
+      `【自我审查任务】：${nextQuestion}\n\n` +
+      `【锚定提醒】所有反思必须围绕原始问题展开："${this.store.originalQuestion}"。\n\n` +
+      `请严格批判自己的推理，提供事实依据和 URL。不确定时请直说。\n` +
+      `只有满足以下全部条件才能输出 ${markers.finishMarker}：(a) 论点有证据支撑；(b) 已检验反驳论点；(c) 边界情况已覆盖。\n` +
+      `否则必须输出 ${markers.continueMarker} + [NEXT_PROMPT: ...] 继续。`
     );
   }
 
   buildForceDeepReviewPrompt(reviewPhase: string): string {
     const { markers } = this.store.config;
+    const lang = this.store.config.language;
     const minLoops = this.getEffectiveMinLoops();
+    if (lang === 'en') {
+      return (
+        `[Forced Deep Review]: You concluded too early. The system requires at least ${minLoops} review rounds (currently at round ${this.store.currentLoop}).\n\n` +
+        `Mandatory review perspective for this round: ${reviewPhase}\n\n` +
+        `[Anchor Reminder] All reflections MUST revolve around the original question: "${this.store.originalQuestion}".\n\n` +
+        `After reviewing, if new issues are found, output ${markers.continueMarker} + [NEXT_PROMPT: ...]; if all exit conditions are met, output ${markers.finishMarker}.`
+      );
+    }
     return (
-      `[Forced Deep Review]: You concluded too early. The system requires at least ${minLoops} review rounds (currently at round ${this.store.currentLoop}).\n\n` +
-      `Mandatory review perspective for this round: ${reviewPhase}\n\n` +
-      `[Anchor Reminder] All reflections MUST revolve around the original question: "${this.store.originalQuestion}".\n\n` +
-      `After reviewing, if new issues are found, output ${markers.continueMarker} + [NEXT_PROMPT: ...]; if all exit conditions are met, output ${markers.finishMarker}.`
+      `【强制深度审查】：你结束得太早了。系统要求至少 ${minLoops} 轮审查（当前第 ${this.store.currentLoop} 轮）。\n\n` +
+      `本轮强制审查视角：${reviewPhase}\n\n` +
+      `【锚定提醒】所有反思必须围绕原始问题展开："${this.store.originalQuestion}"。\n\n` +
+      `审查后：若发现新问题，输出 ${markers.continueMarker} + [NEXT_PROMPT: ...]；若全部退出条件均已满足，输出 ${markers.finishMarker}。`
     );
   }
 
   buildSummaryPrompt(): string {
+    const lang = this.store.config.language;
+    if (lang === 'en') {
+      return (
+        `[Final Summary Command]: Deep thinking has concluded. Review all thoughts and corrections from the original question until now regarding:\n\n` +
+        `"${this.store.originalQuestion}"\n\n` +
+        `Provide a comprehensive final summary. Requirements:\n` +
+        `1. Clear structure, utilizing headings, tables, etc.\n` +
+        `2. Consolidate verified core conclusions and exclude overturned errors.\n` +
+        `3. Mark uncertain parts explicitly.\n` +
+        `4. Include citation sources and links.\n` +
+        `5. Provide a direct and complete response to the original question.\n\n` +
+        `Output the summary directly, without any additional ACTION markers.`
+      );
+    }
     return (
-      `[Final Summary Command]: Deep thinking has concluded. Review all thoughts and corrections from the original question until now regarding:\n\n` +
+      `【最终总结指令】：深度思考已完成。请回顾从原始问题至今的所有思考与纠正：\n\n` +
       `"${this.store.originalQuestion}"\n\n` +
-      `Provide a comprehensive final summary. Requirements:\n` +
-      `1. Clear structure, utilizing headings, tables, etc.\n` +
-      `2. Consolidate verified core conclusions and exclude overturned errors.\n` +
-      `3. Mark uncertain parts explicitly.\n` +
-      `4. Include citation sources and links.\n` +
-      `5. Provide a direct and complete response to the original question.\n\n` +
-      `Output the summary directly, without any additional ACTION markers.`
+      `提供一份全面的最终总结。要求：\n` +
+      `1. 结构清晰，使用标题、表格等格式。\n` +
+      `2. 汇总已验证的核心结论，排除已被推翻的错误。\n` +
+      `3. 明确标注不确定的部分。\n` +
+      `4. 包含引用来源和链接。\n` +
+      `5. 对原始问题提供直接、完整的回应。\n\n` +
+      `直接输出总结，不要附加任何 ACTION 标记。`
     );
   }
 
   buildCorrectionPrompt(): string {
     const { markers } = this.store.config;
+    const lang = this.store.config.language;
+    if (lang === 'en') {
+      return (
+        `[System Warning]: No action markers detected. Please think around the original question "${this.store.originalQuestion}".\n` +
+        `You MUST append ${markers.continueMarker} + [NEXT_PROMPT: ...] to continue, or ${markers.finishMarker} to finish at the very end.`
+      );
+    }
     return (
-      `[System Warning]: No action markers detected. Please think around the original question "${this.store.originalQuestion}".\n` +
-      `You MUST append ${markers.continueMarker} + [NEXT_PROMPT: ...] to continue, or ${markers.finishMarker} to finish at the very end.`
+      `【系统警告】：未检测到动作标记。请围绕原始问题继续思考："${this.store.originalQuestion}"。\n` +
+      `你必须在最末尾附上 ${markers.continueMarker} + [NEXT_PROMPT: ...] 继续，或 ${markers.finishMarker} 结束。`
     );
   }
 

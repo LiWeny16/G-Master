@@ -41,6 +41,8 @@ export interface DeepThinkConfig {
   language: 'zh' | 'en';
   /** 重要的 System Prompt 记忆和固定设置 / Pinned Memories and fixed System Prompts */
   pinnedMemories?: { id: string; content: string; enabled: boolean; title: string }[];
+  /** 每个支持网站的插件启用开关 / Per-site plugin enable switch */
+  siteEnabled?: Partial<Record<'gemini' | 'doubao' | 'chatgpt', boolean>>;
 }
 
 export type EnginePhase = 'idle' | 'waiting' | 'thinking' | 'summarizing' | 'clarifying';
@@ -121,4 +123,5 @@ export const DEFAULT_CONFIG: DeepThinkConfig = {
   maxToolRoundsPerTurn: 8,
   language: systemLang,
   pinnedMemories: [],
+  siteEnabled: { gemini: true, doubao: true, chatgpt: true },
 };

@@ -76,6 +76,11 @@
   line-clamp: unset !important;
 }
 
+/* Doubao: 纯系统注入气泡隐藏文本内容区 */
+[data-testid="send_message"] [data-testid="message_text_content"][style*="display: none"] {
+  display: none !important;
+}
+
 /* ── User bubble 标签 ── */
 .dt-bubble-tag {
   margin-top: 6px;

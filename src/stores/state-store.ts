@@ -191,6 +191,9 @@ export class StateStore {
             ? saved.maxToolRoundsPerTurn
             : DEFAULT_CONFIG.maxToolRoundsPerTurn,
         language: ['zh', 'en'].includes(saved.language as string) ? saved.language : DEFAULT_CONFIG.language,
+        siteEnabled: (saved.siteEnabled && typeof saved.siteEnabled === 'object')
+          ? { ...DEFAULT_CONFIG.siteEnabled, ...saved.siteEnabled }
+          : { ...DEFAULT_CONFIG.siteEnabled },
       };
 
       if (this.agentMode === 'off' && this.config.tavilyEnabled) {

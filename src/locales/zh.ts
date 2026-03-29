@@ -82,6 +82,10 @@ const zh = {
     settings_reset_default: '恢复默认设置',
     settings_reset_all: '重置所有设置与存储',
     settings_language: '界面语言',
+    settings_site_section: '启用网站',
+    settings_site_gemini: 'Gemini',
+    settings_site_doubao: '豆包',
+    settings_site_chatgpt: 'ChatGPT',
 };
 
 export default zh;

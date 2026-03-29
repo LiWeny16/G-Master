@@ -161,6 +161,79 @@ export class DOMBeautifier {
     return `${text.length}:${head}:${tail}`;
   }
 
+  /**
+   * 从豆包用户气泡的原始文本中提取用户实际输入的内容。
+   * - [G-Master AUTO 决策] 格式：取 "用户消息：" 后的文本
+   * - DT 标记流格式：取 "用户原始问题：" 后的文本
+   * - 纯系统注入消息（无用户文本）：返回 null
+   */
+  private extractDoubaoUserText(fullText: string): string | null {
+    const lines = fullText.split(/\r?\n/);
+
+    // Case A: [G-Master AUTO 决策] / [G-Master AUTO Decision]
+    const autoLineIdx = lines.findIndex((l) => {
+      const t = l.trim();
+      return t.startsWith('[G-Master AUTO 决策]') || t.startsWith('[G-Master AUTO Decision]');
+    });
+    if (autoLineIdx !== -1) {
+      for (let i = autoLineIdx + 1; i < lines.length; i++) {
+        const t = lines[i].trim();
+        // "用户消息：" 独占一行 → 用户文本在下一非空行
+        if (t === '用户消息：' || t === 'User Message:') {
+          for (let j = i + 1; j < lines.length; j++) {
+            const nt = lines[j].trim();
+            if (nt) return nt;
+          }
+          return null;
+        }
+        if (t.startsWith('用户消息：')) return t.slice('用户消息：'.length).trim() || null;
+        if (t.startsWith('User Message:')) return t.slice('User Message:'.length).trim() || null;
+      }
+    }
+
+    // Case B: DT 标记流 → 查找 用户原始问题：
+    for (const line of lines) {
+      const t = line.trim();
+      if (t.startsWith('用户原始问题：')) return t.slice('用户原始问题：'.length).trim() || null;
+      if (t.startsWith('Original User Query:')) return t.slice('Original User Query:'.length).trim() || null;
+    }
+
+    return null;
+  }
+
+  /**
+   * 从 ChatGPT 用户气泡的原始文本中提取用户实际输入的内容。
+   * - [G-Master AUTO 决策] 格式：复用 extractDoubaoUserText 逻辑
+   * - ON 模式（系统 Prompt 直接附加）：取 ⟪DT: 标记之前的文本
+   * - 仅含记忆注入（无 DT 标记）：取记忆块之前的文本
+   * - 纯用户消息（无注入）：返回 null（不做处理）
+   */
+  private extractChatGPTUserText(fullText: string): string | null {
+    // Case 1: AUTO decision / DT marker stream（与豆包格式相同）
+    const autoResult = this.extractDoubaoUserText(fullText);
+    if (autoResult) return autoResult;
+
+    // Case 2: ON 模式 —— 系统 Prompt 直接追加在用户文本后，以 ⟪DT: 开头
+    const dtIdx = fullText.indexOf('⟪DT:');
+    if (dtIdx > 0) {
+      const userPart = fullText.slice(0, dtIdx).trim();
+      if (userPart) return userPart;
+    }
+
+    // Case 3: 仅有记忆注入（无系统 Prompt，内存前缀）
+    const memZh = fullText.indexOf('【用户设定的全局记忆');
+    const memEn = fullText.indexOf('[User Pinned Memories');
+    const candidates = [memZh, memEn].filter((i) => i > 0);
+    if (candidates.length > 0) {
+      const memIdx = Math.min(...candidates);
+      const userPart = fullText.slice(0, memIdx).trim();
+      if (userPart) return userPart;
+    }
+
+    // 无任何注入标记 → 保持原样不处理
+    return null;
+  }
+
   private parseNextPromptText(text: string): string | null {
     const tagged = extractTaggedPayload(text, NEXT_PROMPT_TAG);
     if (tagged) {
@@ -377,16 +450,47 @@ export class DOMBeautifier {
         }
       }
 
+      // 豆包专用路径：没有 .query-text-line 结构，直接操作 message_text_content
+      const textBubble = el.querySelector<HTMLElement>('[data-testid="message_text_content"]');
+      if (textBubble && lines.length === 0) {
+        const userText = this.extractDoubaoUserText(fullText);
+        if (userText) {
+          textBubble.textContent = userText;
+          hasUserContent = true;
+        }
+        // else: hasUserContent 保持 false → 下方会隐藏气泡
+      }
+
+      // ChatGPT 专用路径：没有 .query-text-line 结构，文本在 .whitespace-pre-wrap 内
+      const chatgptBubble = el.querySelector<HTMLElement>('.whitespace-pre-wrap');
+      if (chatgptBubble && lines.length === 0 && !textBubble) {
+        const userText = this.extractChatGPTUserText(fullText);
+        if (userText !== null) {
+          chatgptBubble.textContent = userText;
+          hasUserContent = true;
+        }
+        // else: hasUserContent 保持 false → 下方会隐藏气泡
+      }
+
       if (!hasUserContent) {
         lines.forEach((l) => l.classList.add('dt-hidden'));
         const bubble = el.closest('.user-query-bubble-with-background');
         if (bubble) bubble.classList.add('dt-auto-bubble');
+        // 豆包：直接隐藏纯系统注入的文字气泡
+        const dbTextBubble = el.querySelector<HTMLElement>('[data-testid="message_text_content"]');
+        if (dbTextBubble) dbTextBubble.style.display = 'none';
+        // ChatGPT：直接隐藏纯系统注入气泡
+        if (chatgptBubble) chatgptBubble.style.display = 'none';
       }
+
+      // 移除旧标签容器，避免重复追加
+      el.querySelectorAll('.dt-bubble-tags').forEach((t) => t.remove());
 
       const tagContainer = document.createElement('div');
       tagContainer.className = 'dt-bubble-tags';
       tagContainer.style.display = 'flex';
       tagContainer.style.flexWrap = 'wrap';
+      tagContainer.style.justifyContent = 'flex-end';
       tagContainer.style.gap = '6px';
       tagContainer.style.marginTop = '6px';
 
@@ -421,10 +525,15 @@ export class DOMBeautifier {
       }
 
       if (tagContainer.childElementCount > 0) {
-        el.appendChild(tagContainer);
+        // 追加到内层 flex-col 文本容器（避免与外层 flex-row 并排显示）
+        const innerCol = el.querySelector('.flex-col') as HTMLElement | null;
+        (innerCol ?? el).appendChild(tagContainer);
       }
 
       el.dataset.dtDone = '1';
+      // 在所有 DOM 修改完成后重新计算 sig（包含新追加的标签文字），
+      // 确保下次执行时 sig 匹配，guard 生效，避免无限重复处理。
+      el.dataset.dtSig = this.getNodeSignature(el.innerText);
     });
   }
 

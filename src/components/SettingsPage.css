@@ -224,6 +224,74 @@ body {
   margin: 0 16px;
 }
 
+/* ── 网站开关网格 ── */
+.sp-site-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.sp-site-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 30%;
+  flex-grow: 1;
+  padding: 6px 8px;
+  border: 1px solid var(--dt-sand);
+  border-radius: 999px;
+  background: var(--dt-beige);
+  color: var(--dt-muted);
+  font-size: 11px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s, box-shadow .15s;
+  user-select: none;
+}
+.sp-site-btn:hover {
+  background: var(--dt-sand);
+  color: var(--dt-dark);
+}
+.sp-site-btn--on {
+  background: var(--dt-dark);
+  color: var(--dt-cream);
+  border-color: var(--dt-dark);
+  box-shadow: 0 1px 4px rgba(45,45,45,.18);
+}
+.sp-site-btn--on:hover {
+  background: #454545;
+  color: var(--dt-cream);
+}
+
+.sp-site-btn-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.sp-site-btn-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sp-site-btn-check {
+  width: 10px;
+  flex-shrink: 0;
+  text-align: center;
+  font-size: 10px;
+  opacity: 0;
+  transition: opacity .15s;
+}
+.sp-site-btn-check--on {
+  opacity: 1;
+}
+
 /* ── 底部 footer ── */
 .sp-footer {
   padding: 12px 16px;

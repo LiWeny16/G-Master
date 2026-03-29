@@ -21,3 +21,13 @@ scripting / activeTab: Used to inject the custom floating ball and sidebar UI in
 Host Permissions: Used to initiate cross-site API requests to large language model servers and third-party search engines such as Tavily in the background to obtain content and knowledge search results.
 
 If you encounter any obstacles during testing, please reject the submission and leave feedback at any time. We will cooperate with modifications as soon as possible. Thank you for your hard work!
+
+
+单一用途说明（必填）
+本扩展仅用于在 Gemini 网页端提供提示增强与多轮思考辅助，包括系统提示词管理、上下文辅助和可选的联网搜索补充，帮助用户获得更准确的回复。
+
+请求 storage 的理由（必填）
+用于在用户本地保存扩展配置（如语言、功能开关、提示词模板和用户填写的 API 设置），以便下次打开时恢复个人设置。数据保存在浏览器本地存储，不会用于广告或出售。
+
+请求主机权限的理由（必填）
+需要在 gemini.google.com 页面运行扩展内容脚本以展示功能界面并与当前会话页面交互；需要访问 api.tavily.com 以在用户主动启用联网搜索时获取搜索结果。仅访问上述域名，且仅用于实现扩展核心功能。
