@@ -12,8 +12,8 @@ import ClarifyModal from '../components/ClarifyModal';
 import { useInlineToggle } from './useInlineToggle';
 import { useDoubaoInlineToggle } from './useDoubaoInlineToggle';
 import { useChatGPTInlineToggle } from './useChatGPTInlineToggle';
-import { useKimiInlineToggle } from './useKimiInlineToggle';
 import { useZhipuInlineToggle } from './useZhipuInlineToggle';
+import { useDeepseekInlineToggle } from './useDeepseekInlineToggle';
 import { GeminiConversationBulkDeleteController } from './gemini-bulk-delete';
 import i18n from '../i18n';
 
@@ -47,7 +47,7 @@ const ContentApp: React.FC = observer(() => {
 
   // 配置加载完成后才判断当前站点是否被用户关闭
   const isSiteEnabled = configLoaded
-    ? (store.config.siteEnabled?.[siteId as 'gemini' | 'doubao' | 'chatgpt' | 'kimi' | 'zhipu'] ?? true)
+    ? (store.config.siteEnabled?.[siteId as 'gemini' | 'doubao' | 'chatgpt' | 'zhipu' | 'deepseek'] ?? true)
     : false;
 
   // Phase 2: 仅在站点启用时才挂载 DOM Observer + 键盘/点击事件
@@ -202,8 +202,8 @@ const ContentApp: React.FC = observer(() => {
   useInlineToggle(store, handleToggleEngine, handleAbort, isSiteEnabled && siteId === 'gemini');
   useDoubaoInlineToggle(store, handleToggleEngine, handleAbort, isSiteEnabled && siteId === 'doubao');
   useChatGPTInlineToggle(store, handleToggleEngine, handleAbort, isSiteEnabled && siteId === 'chatgpt');
-  useKimiInlineToggle(store, handleToggleEngine, handleAbort, isSiteEnabled && siteId === 'kimi');
   useZhipuInlineToggle(store, handleToggleEngine, handleAbort, isSiteEnabled && siteId === 'zhipu');
+  useDeepseekInlineToggle(store, handleToggleEngine, handleAbort, isSiteEnabled && siteId === 'deepseek');
 
   // 配置未加载完或站点被关闭时不渲染任何 UI
   if (!isSiteEnabled) return null;

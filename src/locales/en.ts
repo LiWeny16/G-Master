@@ -86,6 +86,8 @@ export default {
     settings_site_gemini: 'Gemini',
     settings_site_doubao: 'Doubao',
     settings_site_chatgpt: 'ChatGPT',
-    settings_site_kimi: 'Kimi',
     settings_site_zhipu: 'Zhipu (z.ai)',
+    settings_site_deepseek: 'DeepSeek',
+    settings_wip: 'WIP',
+    settings_wip_tooltip: 'This feature is under development and not yet available',
 };

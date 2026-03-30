@@ -2,14 +2,14 @@ import { ISiteAdapter } from './site-adapter';
 import { GeminiAdapter } from './gemini-adapter';
 import { DoubaoAdapter } from './doubao-adapter';
 import { ChatGPTAdapter } from './chatgpt-adapter';
-import { KimiAdapter } from './kimi-adapter';
 import { ZhipuAdapter } from './zhipu-adapter';
+import { DeepSeekAdapter } from './deepseek-adapter';
 
 /**
  * 当前扩展支持的站点标识。
  * 新增站点时，在这里添加字面量并创建对应 Adapter。
  */
-export type SiteId = 'gemini' | 'doubao' | 'chatgpt' | 'kimi' | 'zhipu' | 'unknown';
+export type SiteId = 'gemini' | 'doubao' | 'chatgpt' | 'zhipu' | 'deepseek' | 'unknown';
 
 /**
  * 根据 hostname 返回站点标识。
@@ -26,16 +26,14 @@ export type SiteId = 'gemini' | 'doubao' | 'chatgpt' | 'kimi' | 'zhipu' | 'unkno
  * ChatGPT 使用通配匹配：
  *   - https://chatgpt.com/*
  *
- * Kimi 支持：
- *   - https://www.kimi.com/*
  */
 export function getSiteId(): SiteId {
   const hostname = window.location.hostname;
   if (hostname === 'gemini.google.com') return 'gemini';
   if (hostname === 'www.doubao.com') return 'doubao';
   if (hostname === 'chatgpt.com') return 'chatgpt';
-  if (hostname === 'www.kimi.com') return 'kimi';
   if (hostname === 'chat.z.ai') return 'zhipu';
+  if (hostname === 'chat.deepseek.com') return 'deepseek';
   return 'unknown';
 }
 
@@ -53,10 +51,10 @@ export function createSiteAdapter(): ISiteAdapter {
       return new DoubaoAdapter();
     case 'chatgpt':
       return new ChatGPTAdapter();
-    case 'kimi':
-      return new KimiAdapter();
     case 'zhipu':
       return new ZhipuAdapter();
+    case 'deepseek':
+      return new DeepSeekAdapter();
     default:
       // 兜底：默认使用 GeminiAdapter，实际不应走到此处
       console.warn('[G-Master] Unknown site, falling back to GeminiAdapter');

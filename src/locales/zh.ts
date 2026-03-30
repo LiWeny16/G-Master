@@ -86,8 +86,10 @@ const zh = {
     settings_site_gemini: 'Gemini',
     settings_site_doubao: '豆包',
     settings_site_chatgpt: 'ChatGPT',
-    settings_site_kimi: 'Kimi',
     settings_site_zhipu: '智谱 (z.ai)',
+    settings_site_deepseek: 'DeepSeek',
+    settings_wip: '开发中',
+    settings_wip_tooltip: '该功能正在开发中，暂不可用',
 };
 
 export default zh;

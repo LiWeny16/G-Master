@@ -304,3 +304,42 @@ body {
   color: var(--dt-muted);
   text-align: center;
 }
+
+/* ── 开发中/禁用 section ── */
+.sp-section--disabled {
+  opacity: 0.55;
+  pointer-events: none;
+  user-select: none;
+  position: relative;
+}
+.sp-section--disabled::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 6px,
+    rgba(212,201,184,0.12) 6px,
+    rgba(212,201,184,0.12) 7px
+  );
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+/* WIP 标签 */
+.sp-wip-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 6px;
+  padding: 1px 6px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: #9E8060;
+  background: rgba(139,115,85,0.1);
+  border: 1px solid rgba(139,115,85,0.2);
+  border-radius: 999px;
+}

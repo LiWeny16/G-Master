@@ -482,6 +482,17 @@ export class DOMBeautifier {
         // else: hasUserContent 保持 false → 下方会隐藏气泡
       }
 
+      // DeepSeek 专用路径：没有 .query-text-line 结构，文本在 .fbb737a4 内
+      const deepseekBubble = el.querySelector<HTMLElement>('.fbb737a4');
+      if (deepseekBubble && lines.length === 0 && !textBubble && !chatgptBubble) {
+        const userText = this.extractDoubaoUserText(fullText);
+        if (userText !== null) {
+          deepseekBubble.textContent = userText;
+          hasUserContent = true;
+        }
+        // else: hasUserContent 保持 false → 下方会隐藏气泡
+      }
+
       if (!hasUserContent) {
         lines.forEach((l) => l.classList.add('dt-hidden'));
         const bubble = el.closest('.user-query-bubble-with-background');
@@ -491,6 +502,8 @@ export class DOMBeautifier {
         if (dbTextBubble) dbTextBubble.style.display = 'none';
         // ChatGPT：直接隐藏纯系统注入气泡
         if (chatgptBubble) chatgptBubble.style.display = 'none';
+        // DeepSeek：直接隐藏纯系统注入气泡
+        if (deepseekBubble) deepseekBubble.style.display = 'none';
       }
 
       // 移除旧标签容器，避免重复追加

@@ -3,11 +3,10 @@
  * 自行管理 chrome.storage.local 加载/保存，不依赖 MobX StateStore。
  */
 import React, { useCallback, useEffect, useState } from 'react';
-import { Bot, Settings2, CheckCircle2, RotateCcw, Save, FolderOpen, KeyRound, Globe } from 'lucide-react';
+import { Bot, Settings2, CheckCircle2, RotateCcw, Save, FolderOpen, KeyRound, Globe, Pin, Plus, Trash2, ChevronDown, ChevronUp, Lock } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import i18n from '../i18n';
 import { DeepThinkConfig, DEFAULT_CONFIG, LoopModel, getReviewPhases, getSystemPromptTemplate } from '../types';
-import { invokeBackground } from '../services/message-bus';
 
 /* ── 各网站 SVG 图标 ── */
 const GeminiIcon: React.FC = () => (
@@ -26,15 +25,15 @@ const DoubaoIcon: React.FC = () => (
   </svg>
 );
 
-const KimiIcon: React.FC = () => (
-  <svg viewBox="0 0 24 24" width="100%" height="100%" fill="currentColor">
-    <path d="M12 2a10 10 0 1 0 0 20A10 10 0 0 0 12 2zm-1 14.5V14l-3 2.5V14l3-2.5L8 9h2.5l1.5 2 1.5-2H16l-3 2.5 3 2.5v2.5l-3-2.5v2.5h-2z" />
-  </svg>
-);
-
 const ZhipuIcon: React.FC = () => (
   <svg viewBox="0 0 24 24" width="100%" height="100%" fill="currentColor">
     <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3l2.5 5.5L20 12l-5.5 2.5L12 20l-2.5-5.5L4 12l5.5-2.5L12 5z" />
+  </svg>
+);
+
+const DeepSeekIcon: React.FC = () => (
+  <svg viewBox="0 0 24 24" width="100%" height="100%" fill="currentColor">
+    <path d="M6.5 10.5c-.83 0-1.5.67-1.5 1.5s.67 1.5 1.5 1.5S8 12.83 8 12s-.67-1.5-1.5-1.5zm5 0c-.83 0-1.5.67-1.5 1.5s.67 1.5 1.5 1.5 1.5-.67 1.5-1.5-.67-1.5-1.5-1.5zm5 0c-.83 0-1.5.67-1.5 1.5s.67 1.5 1.5 1.5 1.5-.67 1.5-1.5-.67-1.5-1.5-1.5zM12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm0 18c-4.418 0-8-3.582-8-8s3.582-8 8-8 8 3.582 8 8-3.582 8-8 8z"/>
   </svg>
 );
 import {
@@ -48,6 +47,7 @@ import {
   Switch,
   TextField,
   ThemeProvider,
+  Tooltip,
   Typography,
   createTheme,
 } from '@mui/material';
@@ -86,35 +86,169 @@ const NumField: React.FC<{
 }> = ({ label, value, min = 0, step = 1, onChange }) => (
   <Box className="sp-field">
     <Typography className="sp-field-label">{label}</Typography>
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
       <IconButton
         size="small"
         onClick={() => onChange(Math.max(min, value - step))}
-        sx={{ border: '1px solid #D4C9B8', borderRadius: 1.5 }}
+        sx={{ border: '1px solid #D4C9B8', borderRadius: '50%', width: 28, height: 28, flexShrink: 0 }}
       >
-        -
+        <Typography sx={{ fontSize: 16, lineHeight: 1 }}>-</Typography>
       </IconButton>
       <TextField
+        variant="standard"
         type="number"
-        size="small"
         value={value}
         onChange={(e) => {
           const v = parseFloat(e.target.value);
           if (!Number.isNaN(v)) onChange(Math.max(min, v));
         }}
-        inputProps={{ min, step }}
-        sx={{ flex: 1 }}
+        InputProps={{
+          disableUnderline: true,
+          inputProps: { min, step, style: { textAlign: 'center' } }
+        }}
+        sx={{
+          flex: 1,
+          '& .MuiInputBase-root': {
+            borderRadius: '14px',
+            backgroundColor: '#EBE5DB',
+            height: 28,
+            padding: 0,
+          },
+          '& input': { height: '28px', padding: 0, boxSizing: 'border-box' },
+          '& input[type=number]': { MozAppearance: 'textfield' },
+          '& input[type=number]::-webkit-outer-spin-button, & input[type=number]::-webkit-inner-spin-button': {
+            WebkitAppearance: 'none', margin: 0,
+          },
+        }}
       />
       <IconButton
         size="small"
         onClick={() => onChange(value + step)}
-        sx={{ border: '1px solid #D4C9B8', borderRadius: 1.5 }}
+        sx={{ border: '1px solid #D4C9B8', borderRadius: '50%', width: 28, height: 28, flexShrink: 0 }}
       >
-        +
+        <Typography sx={{ fontSize: 16, lineHeight: 1 }}>+</Typography>
       </IconButton>
     </Box>
   </Box>
 );
+
+/* ── 设置页记忆卡片列表 ── */
+const SettingsMemoryList: React.FC<{
+  config: import('../types').DeepThinkConfig;
+  update: (p: Partial<import('../types').DeepThinkConfig>) => void;
+}> = ({ config, update }) => {
+  const { t } = useTranslation();
+  const [expandedId, setExpandedId] = React.useState<string | null>(null);
+  const memories = config.pinnedMemories ?? [];
+
+  const handleAdd = () => {
+    const newId = Date.now().toString();
+    update({ pinnedMemories: [...memories, { id: newId, enabled: true, title: t('panel_memory_new'), content: '' }] });
+    setExpandedId(newId);
+  };
+
+  const updateMem = (id: string, patch: Partial<{ title: string; content: string; enabled: boolean }>) => {
+    update({ pinnedMemories: memories.map(m => m.id === id ? { ...m, ...patch } : { ...m }) });
+  };
+
+  const removeMem = (id: string) => {
+    update({ pinnedMemories: memories.filter(m => m.id !== id).map(m => ({ ...m })) });
+  };
+
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+      {memories.map((mem) => {
+        const isExpanded = expandedId === mem.id;
+        return (
+          <Box
+            key={mem.id}
+            sx={{
+              border: `1px solid ${mem.enabled ? 'rgba(139,115,85,0.2)' : '#e0e0e0'}`,
+              borderRadius: '12px',
+              bgcolor: mem.enabled ? 'rgba(139,115,85,0.03)' : '#fcfcfc',
+              overflow: 'hidden',
+              transition: 'all 0.2s',
+              opacity: mem.enabled ? 1 : 0.7,
+            }}
+          >
+            <Box
+              sx={{ display: 'flex', alignItems: 'center', p: 1.2, cursor: 'pointer', gap: 1.5 }}
+              onClick={() => setExpandedId(isExpanded ? null : mem.id)}
+            >
+              <Switch
+                size="small"
+                checked={mem.enabled}
+                onChange={(e) => updateMem(mem.id, { enabled: e.target.checked })}
+                onClick={(e) => e.stopPropagation()}
+                sx={{ ml: 0.5 }}
+              />
+              <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', gap: 1, overflow: 'hidden' }}>
+                <Typography sx={{ fontSize: 13, fontWeight: 600, color: mem.enabled ? '#8B7355' : '#666', whiteSpace: 'nowrap' }}>
+                  {mem.title || t('panel_memory_unnamed')}
+                </Typography>
+                {!isExpanded && mem.content && (
+                  <Typography sx={{ fontSize: 12, color: '#999', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    - {mem.content}
+                  </Typography>
+                )}
+              </Box>
+              <IconButton
+                size="small"
+                onClick={(e) => { e.stopPropagation(); removeMem(mem.id); }}
+                sx={{ color: '#ff6b6b', opacity: 0.6, '&:hover': { opacity: 1, bgcolor: 'rgba(255,107,107,0.1)' } }}
+              >
+                <Trash2 size={14} />
+              </IconButton>
+              <Box sx={{ color: '#ccc', display: 'flex', alignItems: 'center' }}>
+                {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              </Box>
+            </Box>
+            {isExpanded && (
+              <Box sx={{ p: 1.5, pt: 0, borderTop: '1px solid rgba(0,0,0,0.04)' }}>
+                <TextField
+                  fullWidth variant="standard"
+                  placeholder={t('panel_memory_title_placeholder')}
+                  value={mem.title}
+                  onChange={(e) => updateMem(mem.id, { title: e.target.value })}
+                  onClick={(e) => e.stopPropagation()}
+                  sx={{ mb: 1, mt: 1, '& .MuiInputBase-input': { fontSize: 13, fontWeight: 600, color: '#333' } }}
+                  InputProps={{ disableUnderline: true }}
+                />
+                <TextField
+                  multiline minRows={2} maxRows={8}
+                  placeholder={t('panel_memory_content_placeholder')}
+                  value={mem.content}
+                  onChange={(e) => updateMem(mem.id, { content: e.target.value })}
+                  onClick={(e) => e.stopPropagation()}
+                  fullWidth variant="outlined" size="small"
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      fontSize: 12,
+                      backgroundColor: mem.enabled ? '#fff' : '#f5f5f5',
+                      borderRadius: '8px',
+                      '& fieldset': { borderColor: 'rgba(0,0,0,0.08)' },
+                      '&:hover fieldset': { borderColor: 'rgba(139,115,85,0.3)' },
+                      '&.Mui-focused fieldset': { borderColor: '#8B7355' }
+                    }
+                  }}
+                />
+              </Box>
+            )}
+          </Box>
+        );
+      })}
+      <Button
+        variant="text" size="small" onClick={handleAdd}
+        sx={{
+          color: '#8B7355', bgcolor: 'rgba(139,115,85,0.05)', borderRadius: '8px', py: 1,
+          '&:hover': { bgcolor: 'rgba(139,115,85,0.1)' }, display: 'flex', gap: 1
+        }}
+      >
+        <Plus size={16} /> {t('panel_memory_add')}
+      </Button>
+    </Box>
+  );
+};
 
 interface Props {
   /** popup 模式时设为 true，缩减高度 */
@@ -175,18 +309,7 @@ const SettingsPageContent: React.FC<Props> = ({ popupMode = false }) => {
     });
   }, [persist]);
 
-  const handleReset = () => {
-    const currentLang = config.language || 'zh';
-    const def = {
-      ...DEFAULT_CONFIG,
-      language: currentLang,
-      reviewPhases: getReviewPhases(currentLang),
-      systemPromptTemplate: getSystemPromptTemplate(currentLang, DEFAULT_CONFIG.markers)
-    };
-    setConfig(def);
-    i18n.changeLanguage(def.language);
-    persist(def);
-  };
+ 
 
   const handleResetAndClear = () => {
     const currentLang = config.language || 'zh';
@@ -243,8 +366,8 @@ const SettingsPageContent: React.FC<Props> = ({ popupMode = false }) => {
                   { key: 'gemini', label: t('settings_site_gemini'), Icon: GeminiIcon },
                   { key: 'doubao', label: t('settings_site_doubao'), Icon: DoubaoIcon },
                   { key: 'chatgpt', label: t('settings_site_chatgpt'), Icon: ChatGPTIcon },
-                  { key: 'kimi', label: t('settings_site_kimi'), Icon: KimiIcon },
                   { key: 'zhipu', label: t('settings_site_zhipu'), Icon: ZhipuIcon },
+                  { key: 'deepseek', label: t('settings_site_deepseek'), Icon: DeepSeekIcon },
                 ] as const
               ).map(({ key, label, Icon }) => {
                 const enabled = config.siteEnabled?.[key] ?? true;
@@ -267,6 +390,20 @@ const SettingsPageContent: React.FC<Props> = ({ popupMode = false }) => {
                 );
               })}
             </div>
+          </div>
+
+          <div className="sp-divider" />
+
+          {/* 核心记忆 */}
+          <div className="sp-section">
+            <div className="sp-section-label">
+              <Pin size={11} />
+              {t('panel_memory_title')}
+            </div>
+            <Typography sx={{ fontSize: 11, color: 'rgba(45,45,45,0.55)', mb: 1.5, lineHeight: 1.5 }}>
+              {t('panel_memory_desc')}
+            </Typography>
+            <SettingsMemoryList config={config} update={update} />
           </div>
 
           <div className="sp-divider" />
@@ -351,7 +488,7 @@ const SettingsPageContent: React.FC<Props> = ({ popupMode = false }) => {
 
           <div className="sp-divider" />
 
-          {/* 全能 Agent / Tavily / 本地工作区 */}
+          {/* 全能 Agent / Tavily */}
           <div className="sp-section">
             <div className="sp-section-label">
               <KeyRound size={11} />
@@ -390,16 +527,6 @@ const SettingsPageContent: React.FC<Props> = ({ popupMode = false }) => {
               </Alert>
             )}
 
-            <FormControlLabel
-              control={(
-                <Switch
-                  checked={config.localFolderEnabled}
-                  onChange={(e) => update({ localFolderEnabled: e.target.checked })}
-                />
-              )}
-              label={t('settings_local_folder')}
-              sx={{ mt: 0.8 }}
-            />
             <NumField
               label={t('settings_max_tool_rounds')}
               value={config.maxToolRoundsPerTurn}
@@ -407,55 +534,49 @@ const SettingsPageContent: React.FC<Props> = ({ popupMode = false }) => {
               step={1}
               onChange={(v) => update({ maxToolRoundsPerTurn: v })}
             />
-            <div className="sp-field" style={{ marginTop: 10 }}>
-              <span className="sp-field-label">{t('settings_workspace')}</span>
-              {popupMode ? (
-                <Stack className="sp-hint" spacing={1}>
-                  <Typography sx={{ fontSize: 12 }}>{t('settings_workspace_popup_hint')}</Typography>
-                  <Button
-                    type="button"
-                    variant="outlined"
-                    size="small"
-                    onClick={() => chrome.runtime.openOptionsPage()}
-                    sx={{ alignSelf: 'flex-start' }}
-                  >
-                    <Settings2 size={12} />
-                    {t('settings_workspace_open_page')}
-                  </Button>
-                </Stack>
-              ) : (
+          </div>
+
+          <div className="sp-divider" />
+
+          {/* 本地工作区授权（开发中，暂时 disable） */}
+          <div className="sp-section sp-section--disabled">
+            <div className="sp-section-label">
+              <FolderOpen size={11} />
+              {t('settings_workspace')}
+              <span className="sp-wip-badge">
+                <Lock size={9} />
+                {t('settings_wip')}
+              </span>
+            </div>
+            <Tooltip title={t('settings_wip_tooltip')} placement="top" arrow>
+              <span style={{ display: 'block' }}>
+                <FormControlLabel
+                  disabled
+                  control={(
+                    <Switch
+                      disabled
+                      checked={config.localFolderEnabled}
+                    />
+                  )}
+                  label={t('settings_local_folder')}
+                  sx={{ mt: 0.5, opacity: 0.5 }}
+                />
+              </span>
+            </Tooltip>
+            <Tooltip title={t('settings_wip_tooltip')} placement="top" arrow>
+              <span style={{ display: 'inline-block', marginTop: 8 }}>
                 <Button
+                  disabled
                   type="button"
                   variant="outlined"
                   size="small"
-                  onClick={async () => {
-                    if (!('showDirectoryPicker' in window)) {
-                      alert(t('settings_workspace_not_supported'));
-                      return;
-                    }
-                    try {
-                      const handle = await (window as Window & { showDirectoryPicker?: () => Promise<FileSystemDirectoryHandle> }).showDirectoryPicker?.();
-                      if (!handle) return;
-                      const res = await invokeBackground({
-                        type: 'SET_WORKSPACE_ROOT',
-                        directoryHandle: handle,
-                      });
-                      if (res.ok) {
-                        alert(t('settings_workspace_connected', { name: handle.name }));
-                      } else {
-                        alert(res.error);
-                      }
-                    } catch (err) {
-                      if ((err as Error).name === 'AbortError') return;
-                      alert(err instanceof Error ? err.message : String(err));
-                    }
-                  }}
+                  sx={{ opacity: 0.45 }}
                 >
                   <FolderOpen size={14} />
                   {t('settings_workspace_select')}
                 </Button>
-              )}
-            </div>
+              </span>
+            </Tooltip>
           </div>
 
         </div>
@@ -463,10 +584,6 @@ const SettingsPageContent: React.FC<Props> = ({ popupMode = false }) => {
         {/* ── 底部 ── */}
         <div className="sp-footer">
           <Stack alignItems="center" spacing={1.2}>
-            <Button variant="outlined" size="small" onClick={handleReset}>
-              <RotateCcw size={11} />
-              {t('settings_reset_default')}
-            </Button>
             <Button variant="outlined" color="error" size="small" onClick={handleResetAndClear}>
               <RotateCcw size={11} />
               {t('settings_reset_all')}
@@ -480,3 +597,4 @@ const SettingsPageContent: React.FC<Props> = ({ popupMode = false }) => {
 };
 
 export default SettingsPageContent;
+

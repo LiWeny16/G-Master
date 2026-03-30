@@ -329,7 +329,25 @@ const ClarifyModal: React.FC<Props> = observer(({ store, onSubmit, onSkip }) => 
     };
 
     useEffect(() => {
+        // DeepSeek 的回答容器存在 overflow 裁剪，内联挂载无法显示，
+        // 直接强制走 body fixed 兜底层。
+        const isDeepSeek = window.location.hostname.includes('deepseek.com');
+
         const timer = setInterval(() => {
+            // DeepSeek 专用快速路径：直接更新 global fallback，跳过内联挂载逻辑
+            if (isDeepSeek) {
+                if (store.userWorkflowPhase === 'clarify' && store.clarifyQuestions.length > 0) {
+                    const globalFallback = ensureGlobalFallbackMount();
+                    globalFallback.dataset.clarifyJson = JSON.stringify(store.clarifyQuestions);
+                    setMounts([{ id: globalFallback.id, node: globalFallback, questions: store.clarifyQuestions, visible: true }]);
+                } else {
+                    const globalFallback = document.getElementById('dt-clarify-global-fallback') as HTMLElement | null;
+                    if (globalFallback) globalFallback.remove();
+                    setMounts([]);
+                }
+                return;
+            }
+
             let nodes = Array.from(document.querySelectorAll('.dt-react-clarify-mount')) as HTMLElement[];
 
             nodes.forEach((node) => {
