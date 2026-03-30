@@ -16,7 +16,7 @@ const zh = {
     toggle_tavily_off: '点击启用 Tavily 搜索',
     token_meter_usage: '{{used}}/{{max}} 估算Token',
     token_meter_title: '上下文窗口',
-    token_meter_iq_title: '🧠 智力水平',
+    token_meter_iq_title: '智力水平',
     token_meter_iq_desc: '基于 Lost in the Middle 研究，随上下文增长模型注意力衰减',
     // Panel
     panel_tab_settings: '设置',

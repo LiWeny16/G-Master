@@ -16,7 +16,7 @@ export default {
     toggle_tavily_off: 'Click to enable Tavily search',
     token_meter_usage: '{{used}}/{{max}} Estimated Tokens',
     token_meter_title: 'Context Window',
-    token_meter_iq_title: '🧠 Intelligence Level',
+    token_meter_iq_title: 'Intelligence Level',
     token_meter_iq_desc: 'Based on Lost in the Middle research, model attention decays as context grows',
     // Panel
     panel_tab_settings: 'Settings',

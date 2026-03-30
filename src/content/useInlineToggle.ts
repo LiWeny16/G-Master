@@ -15,6 +15,14 @@ export function useInlineToggle(
   onAbort: () => void,
   enabled: boolean = true,
 ) {
+  // Lucide Lightbulb icon (inline SVG) used in non-React injected HTML.
+  const IQ_LUCIDE_ICON = `
+    <svg class="dt-tm-iq-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M15.09 14.37a5 5 0 1 0-6.18 0A7 7 0 0 1 12 20a7 7 0 0 1 3.09-5.63"></path>
+      <path d="M9 18h6"></path>
+      <path d="M10 22h4"></path>
+    </svg>
+  `;
   /* 用 ref 持有最新回调，避免 effect 闭包陈旧 */
   const toggleRef = useRef(onToggle);
   const abortRef = useRef(onAbort);
@@ -92,12 +100,12 @@ export function useInlineToggle(
         const iqPctText = tokenMeter.querySelector('.dt-tm-iq-pct') as HTMLSpanElement | null;
         const iqBarFg = tokenMeter.querySelector('.dt-tm-iq-bar-fg') as HTMLDivElement | null;
         const meterTitle = tokenMeter.querySelector('.dt-tm-title') as HTMLDivElement | null;
-        const iqTitle = tokenMeter.querySelector('.dt-tm-iq-title') as HTMLSpanElement | null;
+        const iqTitleText = tokenMeter.querySelector('.dt-tm-iq-title-text') as HTMLSpanElement | null;
         const iqDesc = tokenMeter.querySelector('.dt-tm-iq-desc') as HTMLDivElement | null;
 
         if (ring && usageText && pctText && barFg) {
           if (meterTitle) meterTitle.textContent = i18n.t('token_meter_title');
-          if (iqTitle) iqTitle.textContent = i18n.t('token_meter_iq_title');
+          if (iqTitleText) iqTitleText.textContent = i18n.t('token_meter_iq_title');
           if (iqDesc) iqDesc.textContent = i18n.t('token_meter_iq_desc');
 
           const formattedUsed = (estimatedTokens / 1000).toFixed(1) + 'K';
@@ -124,11 +132,12 @@ export function useInlineToggle(
             barFg.style.background = errColor;
           }
 
-          // === 智力曲线：基于 "Lost in the Middle" 研究 ===
-          // 调整曲线使其尽早开始缓慢下降: intelligence = 100 - 70 * Math.pow(contextPercent/100, 1.2)
-          // 0% context → 100% IQ, 10% → ~95%, 50% → ~69%, 80% → ~46%, 100% → 30%
+          // === 智力曲线（按约 32K 有效上下文窗口重标定） ===
+          // 为了更贴近网页端体感，先把 104K 映射到 32K 再计算衰减。
+          // 0% context → 100% IQ, 10% → ~93%, 50% → ~55%, 80% → ~36%, 100% → 25%
+          const effectivePercent = Math.min(100, rawPercent * (104000 / 32000));
           const iqPercent = Math.max(0, Math.min(100,
-            100 - 70 * Math.pow(rawPercent / 100, 1.2)
+            100 - 75 * Math.pow(effectivePercent / 100, 1.18)
           ));
           const iqStr = iqPercent.toFixed(0) + '%';
 
@@ -391,6 +400,8 @@ export function useInlineToggle(
           .dt-tm-row { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px; }
           .dt-tm-bar-bg { width: 100%; height: 6px; background: #eaeff4; border-radius: 3px; margin-top: 10px; overflow: hidden; }
           .dt-tm-bar-fg { height: 100%; width: 0%; background: #007bdd; transition: width 0.3s, background 0.3s; }
+          .dt-tm-iq-title-wrap { display: inline-flex; align-items: center; gap: 4px; color: #777; font-size: 12px; }
+          .dt-tm-iq-icon { color: #1e88e5; filter: drop-shadow(0 0 2px rgba(30, 136, 229, 0.65)); }
           /* 修复深色模式适配 */
           @media (prefers-color-scheme: dark) {
             .dt-tm-tooltip { background: #1e1e1e; border-color: #333; color: #eee; }
@@ -413,7 +424,7 @@ export function useInlineToggle(
           <div class="dt-tm-bar-bg"><div class="dt-tm-bar-fg"></div></div>
           <div style="margin-top:12px;border-top:1px solid #eee;padding-top:10px;">
             <div class="dt-tm-row" style="margin-bottom:4px;">
-              <span class="dt-tm-iq-title" style="color:#777;font-size:12px;">${i18n.t('token_meter_iq_title')}</span>
+              <span class="dt-tm-iq-title-wrap">${IQ_LUCIDE_ICON}<span class="dt-tm-iq-title-text">${i18n.t('token_meter_iq_title')}</span></span>
               <span class="dt-tm-iq-pct" style="font-weight:600;color:#2e7d32;">100%</span>
             </div>
             <div class="dt-tm-bar-bg"><div class="dt-tm-iq-bar-fg" style="height:100%;width:100%;background:#2e7d32;transition:width 0.3s,background 0.3s;"></div></div>

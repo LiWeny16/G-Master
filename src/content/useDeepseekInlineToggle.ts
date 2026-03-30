@@ -33,6 +33,14 @@ export function useDeepseekInlineToggle(
   onAbort: () => void,
   enabled: boolean = true,
 ) {
+  // Lucide Lightbulb icon (inline SVG) used in non-React injected HTML.
+  const IQ_LUCIDE_ICON = `
+    <svg class="dt-tm-iq-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M15.09 14.37a5 5 0 1 0-6.18 0A7 7 0 0 1 12 20a7 7 0 0 1 3.09-5.63"></path>
+      <path d="M9 18h6"></path>
+      <path d="M10 22h4"></path>
+    </svg>
+  `;
   const toggleRef = useRef(onToggle);
   const abortRef  = useRef(onAbort);
   useEffect(() => { toggleRef.current = onToggle; }, [onToggle]);
@@ -112,12 +120,12 @@ export function useDeepseekInlineToggle(
         const iqPctText   = tokenMeter.querySelector<HTMLSpanElement>('.dt-tm-iq-pct');
         const iqBarFg     = tokenMeter.querySelector<HTMLDivElement>('.dt-tm-iq-bar-fg');
         const meterTitle  = tokenMeter.querySelector<HTMLDivElement>('.dt-tm-title');
-        const iqTitle     = tokenMeter.querySelector<HTMLSpanElement>('.dt-tm-iq-title');
+        const iqTitleText = tokenMeter.querySelector<HTMLSpanElement>('.dt-tm-iq-title-text');
         const iqDesc      = tokenMeter.querySelector<HTMLDivElement>('.dt-tm-iq-desc');
 
         if (ring && usageText && pctText && barFg) {
           if (meterTitle) meterTitle.textContent = i18n.t('token_meter_title');
-          if (iqTitle)    iqTitle.textContent    = i18n.t('token_meter_iq_title');
+          if (iqTitleText) iqTitleText.textContent = i18n.t('token_meter_iq_title');
           if (iqDesc)     iqDesc.textContent     = i18n.t('token_meter_iq_desc');
 
           const formattedUsed = (estimatedTokens / 1000).toFixed(1) + 'K';
@@ -134,8 +142,9 @@ export function useDeepseekInlineToggle(
           ring.style.stroke      = color;
           barFg.style.background = color;
 
-          // 智力曲线：Lost in the Middle 研究
-          const iqPercent = Math.max(0, Math.min(100, 100 - 70 * Math.pow(rawPercent / 100, 1.2)));
+          // 智力曲线（按约 32K 有效上下文窗口重标定）
+          const effectivePercent = Math.min(100, rawPercent * (64000 / 32000));
+          const iqPercent = Math.max(0, Math.min(100, 100 - 75 * Math.pow(effectivePercent / 100, 1.18)));
           const iqStr     = iqPercent.toFixed(0) + '%';
           if (iqPctText) iqPctText.textContent = iqStr;
           if (iqBarFg) {
@@ -340,7 +349,10 @@ export function useDeepseekInlineToggle(
           <div class="dt-tm-bar-bg" style="width:100%;height:6px;background:#eaeff4;border-radius:3px;margin-top:10px;overflow:hidden;"><div class="dt-tm-bar-fg" style="height:100%;width:0%;background:#007bdd;transition:width .3s,background .3s;"></div></div>
           <div style="margin-top:12px;border-top:1px solid #eee;padding-top:10px;">
             <div class="dt-tm-row" style="display:flex;justify-content:space-between;margin-bottom:4px;">
-              <span class="dt-tm-iq-title" style="color:#777;font-size:12px;">${i18n.t('token_meter_iq_title')}</span>
+              <span class="dt-tm-iq-title-wrap" style="display:inline-flex;align-items:center;gap:4px;color:#777;font-size:12px;">
+                ${IQ_LUCIDE_ICON}
+                <span class="dt-tm-iq-title-text">${i18n.t('token_meter_iq_title')}</span>
+              </span>
               <span class="dt-tm-iq-pct" style="font-weight:600;color:#2e7d32;">100%</span>
             </div>
             <div class="dt-tm-bar-bg" style="width:100%;height:6px;background:#eaeff4;border-radius:3px;overflow:hidden;"><div class="dt-tm-iq-bar-fg" style="height:100%;width:100%;background:#2e7d32;transition:width .3s,background .3s;"></div></div>
@@ -348,6 +360,11 @@ export function useDeepseekInlineToggle(
           </div>
         </div>
       `;
+      const iqIcon = tokenMeter.querySelector<SVGElement>('.dt-tm-iq-icon');
+      if (iqIcon) {
+        iqIcon.style.color = '#1e88e5';
+        iqIcon.style.filter = 'drop-shadow(0 0 2px rgba(30, 136, 229, 0.65))';
+      }
       tokenMeter.addEventListener('mouseenter', () => {
         const tt = tokenMeter!.querySelector<HTMLElement>('.dt-tm-tooltip');
         if (tt) tt.style.display = 'block';
