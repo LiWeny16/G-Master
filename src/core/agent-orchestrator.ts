@@ -128,6 +128,8 @@ export class AgentOrchestrator {
         this.store.currentLoop = 1;
         this.store.isSummarizing = false;
         this.store.plannedDeepLoops = 1; // 仅一次循环用于生成问卷
+        // 保存 intent，供用户提交问卷答案后 resumeAfterClarify → _startDeepOrFinish 使用
+        this.store.pendingIntent = parsed;
       });
 
       const loopModel = this.loopModelToGeminiModel(this.store.config.loopModel);

@@ -294,7 +294,15 @@ const ClarifyModal: React.FC<Props> = observer(({ store, onSubmit, onSkip }) => 
         const style = window.getComputedStyle(node);
         if (style.display === 'none' || style.visibility === 'hidden') return false;
         if (node.closest('.dt-hidden, [hidden], [aria-hidden="true"]')) return false;
-        return node.getClientRects().length > 0;
+        if (node.getClientRects().length === 0) return false;
+
+        const rect = node.getBoundingClientRect();
+        const vw = window.innerWidth || document.documentElement.clientWidth;
+        const vh = window.innerHeight || document.documentElement.clientHeight;
+
+        // 仅当节点与当前视口相交时才视为“可见”，否则启用右下角全局兜底。
+        const intersectsViewport = rect.bottom > 0 && rect.right > 0 && rect.top < vh && rect.left < vw;
+        return intersectsViewport;
     };
 
     const ensureGlobalFallbackMount = (): HTMLElement => {
@@ -306,7 +314,7 @@ const ClarifyModal: React.FC<Props> = observer(({ store, onSubmit, onSkip }) => 
         el.style.position = 'fixed';
         el.style.top = 'auto';
         el.style.left = 'auto';
-        el.style.right = '66px';
+        el.style.right = '76px';
         el.style.bottom = '88px';
         el.style.width = 'min(420px, calc(100vw - 32px))';
         el.style.maxWidth = 'calc(100vw - 16px)';
@@ -315,7 +323,7 @@ const ClarifyModal: React.FC<Props> = observer(({ store, onSubmit, onSkip }) => 
         el.style.overflowX = 'hidden';
         el.style.overflowY = 'auto';
         el.style.overscrollBehavior = 'contain';
-        el.style.zIndex = '9999';
+        el.style.zIndex = '2147483646';
         document.body.appendChild(el);
         return el;
     };

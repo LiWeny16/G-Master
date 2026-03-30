@@ -136,13 +136,15 @@ const ContentApp: React.FC = observer(() => {
 
     const userText = adapter.getEditorText();
     if (!userText) return;
+    const effectiveMode = siteId === 'zhipu' && store.agentMode === 'auto' ? 'on' : store.agentMode;
+    const isAgentEnabled = effectiveMode !== 'off';
 
     // === Case 1: 深度思考开启 — 走 AUTO 或 ON 流程 ===
-    if (store.isAgentEnabled) {
+    if (isAgentEnabled) {
       e.preventDefault();
       e.stopPropagation();
 
-      if (store.agentMode === 'auto') {
+      if (effectiveMode === 'auto') {
         // AUTO 模式：beginIntentPhase 会在内部注入记忆
         _injecting = true;
         void orchestrator.beginIntentPhase(userText).finally(() => {
@@ -213,6 +215,7 @@ const ContentApp: React.FC = observer(() => {
         store={store}
         open={panelOpen}
         anchorPos={ballPos}
+        allowAutoMode={siteId !== 'zhipu'}
         onClose={() => setPanelOpen(false)}
         onAbort={handleAbort}
       />

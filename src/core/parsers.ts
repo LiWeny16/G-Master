@@ -21,28 +21,27 @@ export function escapeRegexLiteral(text: string): string {
     return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function isAngleTagStyle(tag: string): boolean {
-    return tag === tag.toLowerCase();
+function getTagPatterns(tag: string): { sameTagRe: RegExp; closeTagRe: RegExp; angleTagRe: RegExp } {
+    const escapedTag = escapeRegexLiteral(tag);
+    const escapedLowerTag = escapeRegexLiteral(tag.toLowerCase());
+    return {
+        sameTagRe: new RegExp(`\\[${escapedTag}\\]\\s*([\\s\\S]*?)\\s*\\[${escapedTag}\\]`, 'i'),
+        closeTagRe: new RegExp(`\\[${escapedTag}\\]\\s*([\\s\\S]*?)\\s*\\[\\/${escapedTag}\\]`, 'i'),
+        angleTagRe: new RegExp(`<${escapedLowerTag}>\\s*([\\s\\S]*?)\\s*<\\/${escapedLowerTag}>`, 'i'),
+    };
 }
 
 export function extractTaggedPayload(text: string, tag: string): string | null {
-    if (isAngleTagStyle(tag)) {
-        const escapedTag = escapeRegexLiteral(tag.toLowerCase());
-        const xmlRe = new RegExp(`<${escapedTag}>\\s*([\\s\\S]*?)\\s*<\\/${escapedTag}>`, 'i');
-        const xmlMatch = text.match(xmlRe);
-        if (xmlMatch?.[1]) return xmlMatch[1].trim();
-        return null;
-    }
+    const { sameTagRe, closeTagRe, angleTagRe } = getTagPatterns(tag);
 
-    const escapedTag = escapeRegexLiteral(tag);
-    const canonicalRe = new RegExp(`\\[${escapedTag}\\]\\s*([\\s\\S]*?)\\s*\\[${escapedTag}\\]`, 'i');
-    const canonicalMatch = text.match(canonicalRe);
+    const canonicalMatch = text.match(sameTagRe);
     if (canonicalMatch?.[1]) return canonicalMatch[1].trim();
 
-    // 兼容旧格式：[TAG] ... [/TAG]
-    const legacyRe = new RegExp(`\\[${escapedTag}\\]\\s*([\\s\\S]*?)\\s*\\[\\/${escapedTag}\\]`, 'i');
-    const legacyMatch = text.match(legacyRe);
+    const legacyMatch = text.match(closeTagRe);
     if (legacyMatch?.[1]) return legacyMatch[1].trim();
+
+    const xmlMatch = text.match(angleTagRe);
+    if (xmlMatch?.[1]) return xmlMatch[1].trim();
 
     return null;
 }
@@ -88,40 +87,29 @@ export function parseTagBoundary(
     tag: string,
     inBlock: boolean,
 ): { isMarker: boolean; nextInBlock: boolean } {
-    if (isAngleTagStyle(tag)) {
-        const normalized = line.trim().toLowerCase();
-        const lowerTag = tag.toLowerCase();
-        const openTag = `<${lowerTag}>`;
-        const closeTag = `</${lowerTag}>`;
-
-        if (normalized === closeTag) return { isMarker: true, nextInBlock: false };
-        if (normalized === openTag) return { isMarker: true, nextInBlock: !inBlock };
-
-        return { isMarker: false, nextInBlock: inBlock };
-    }
-
     const normalized = normalizeMarkerLine(line);
     const upperTag = tag.toUpperCase();
     const openTag = `[${upperTag}]`;
     const closeTag = `[/${upperTag}]`;
+    const normalizedAngle = line.trim().toLowerCase();
+    const angleOpenTag = `<${tag.toLowerCase()}>`;
+    const angleCloseTag = `</${tag.toLowerCase()}>`;
 
     if (normalized === closeTag) return { isMarker: true, nextInBlock: false };
     if (normalized === openTag) return { isMarker: true, nextInBlock: !inBlock };
+    if (normalizedAngle === angleCloseTag) return { isMarker: true, nextInBlock: false };
+    if (normalizedAngle === angleOpenTag) return { isMarker: true, nextInBlock: !inBlock };
 
     return { isMarker: false, nextInBlock: inBlock };
 }
 
 export function removeTaggedBlock(text: string, tag: string): string {
-    if (isAngleTagStyle(tag)) {
-        const escapedTag = escapeRegexLiteral(tag.toLowerCase());
-        const xmlRe = new RegExp(`<${escapedTag}>[\\s\\S]*?<\\/${escapedTag}>`, 'gi');
-        return text.replace(xmlRe, '');
-    }
-
     const escapedTag = escapeRegexLiteral(tag);
+    const escapedLowerTag = escapeRegexLiteral(tag.toLowerCase());
     const legacyRe = new RegExp(`\\[${escapedTag}\\][\\s\\S]*?\\[\\/${escapedTag}\\]`, 'gi');
     const canonicalRe = new RegExp(`\\[${escapedTag}\\][\\s\\S]*?\\[${escapedTag}\\]`, 'gi');
-    return text.replace(legacyRe, '').replace(canonicalRe, '');
+    const xmlRe = new RegExp(`<${escapedLowerTag}>[\\s\\S]*?<\\/${escapedLowerTag}>`, 'gi');
+    return text.replace(legacyRe, '').replace(canonicalRe, '').replace(xmlRe, '');
 }
 
 function extractFirstJsonArray(text: string): string | null {

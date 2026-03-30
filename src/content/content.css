@@ -130,6 +130,23 @@
   animation: dtFadeIn .4s ease;
 }
 
+.dt-marker-stack {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  margin-top: 14px;
+}
+
+.dt-marker-stack > .dt-resp-badge,
+.dt-marker-stack > .dt-next-prompt-card,
+.dt-marker-stack > .dt-react-clarify-mount {
+  margin-top: 0;
+}
+
+.dt-marker-stack > * + * {
+  margin-top: 12px;
+}
+
 .dt-badge-think {
   background: rgba(139, 115, 85, .07);
   color: #8B7355;

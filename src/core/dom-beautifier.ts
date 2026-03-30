@@ -19,7 +19,7 @@ export class DOMBeautifier {
   private copyCleanerInstalled = false;
   private pendingCopyText: string | null = null;
 
-  private readonly mountHostSelector = '.markdown, .response-content, .model-response-text, .markdown-content';
+  private readonly mountHostSelector = '#response-content-container, .markdown, .response-content, .model-response-text, .markdown-content';
 
   constructor(
     private adapter: ISiteAdapter,
@@ -295,6 +295,16 @@ export class DOMBeautifier {
     return host;
   }
 
+  private resolveUiStack(mountHost: HTMLElement): HTMLElement {
+    let stack = mountHost.querySelector(':scope > .dt-marker-stack') as HTMLElement | null;
+    if (stack) return stack;
+
+    stack = document.createElement('div');
+    stack.className = 'dt-marker-stack';
+    mountHost.appendChild(stack);
+    return stack;
+  }
+
   private sanitizeSpecialText(text: string): string {
     const { continueMarker, finishMarker } = this.store.config.markers;
     const out: string[] = [];
@@ -548,6 +558,8 @@ export class DOMBeautifier {
 
     responseMessages.forEach((el) => {
       const text = el.innerText;
+      const mountHost = this.resolveMountHost(el);
+      const uiStack = this.resolveUiStack(mountHost);
       const sig = this.getNodeSignature(text);
       if (el.dataset.dtDone === '1' && el.dataset.dtSig === sig) return;
       el.dataset.dtSig = sig;
@@ -557,15 +569,15 @@ export class DOMBeautifier {
       const hasFinish = text.includes(finishMarker) || text.includes('[ACTION: GOAL_REACHED]');
       const hasNextPrompt = text.includes('[NEXT_PROMPT');
       const hasClarify = text.includes('[CLARIFY]');
-      const hasRouter = /<router_config>|<\/router_config>/i.test(text);
+      const hasRouter = /\[(?:\/)?router_config\]|<\/?router_config>/i.test(text);
       const intentInfo = parseIntentJson(text);
       const nextPromptText = this.parseNextPromptText(text);
-      const hasExistingUi = Boolean(el.querySelector('.dt-resp-badge, .dt-next-prompt-card'));
+      const hasExistingUi = Boolean(uiStack.querySelector('.dt-resp-badge, .dt-next-prompt-card, .dt-react-clarify-mount'));
 
       if (!hasContinue && !hasFinish && !hasNextPrompt && !intentInfo && !hasClarify && !hasRouter && !hasExistingUi) return;
 
       // 移除旧 badge
-      const oldBadge = el.querySelector('.dt-resp-badge') as HTMLElement | null;
+      const oldBadge = uiStack.querySelector('.dt-resp-badge') as HTMLElement | null;
 
       const upsertBadge = (className: string, textContent: string): void => {
         if (oldBadge) {
@@ -579,7 +591,7 @@ export class DOMBeautifier {
         const badge = document.createElement('div');
         badge.className = className;
         badge.textContent = textContent;
-        el.appendChild(badge);
+        uiStack.appendChild(badge);
       };
 
       // 生成中仅更新状态徽章，避免高频改写 DOM 触发观察器回流。
@@ -813,16 +825,14 @@ export class DOMBeautifier {
 
       // 获取整个回答并解析问卷，插入挂载点
       const blockQuestions = parseClarifyBlock(text);
-      const mountHost = this.resolveMountHost(el);
-      if (blockQuestions && blockQuestions.length > 0 && !mountHost.querySelector('.dt-react-clarify-mount')) {
+      if (blockQuestions && blockQuestions.length > 0 && !uiStack.querySelector('.dt-react-clarify-mount')) {
         const mount = document.createElement('div');
         mount.className = 'dt-react-clarify-mount';
         mount.dataset.clarifyJson = JSON.stringify(blockQuestions);
-        // Insert inside el, but before any badges
-        mountHost.appendChild(mount);
+        uiStack.appendChild(mount);
       }
 
-      this.upsertNextPromptCard(mountHost, nextPromptText);
+      this.upsertNextPromptCard(uiStack, nextPromptText);
 
       // 原本的 注入可视化徽章 逻辑
       if (hasContinue) {

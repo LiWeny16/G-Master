@@ -28,6 +28,7 @@ interface Props {
   store: StateStore;
   open: boolean;
   anchorPos: { x: number; y: number };
+  allowAutoMode?: boolean;
   onClose: () => void;
   onAbort: () => void;
 }
@@ -278,7 +279,7 @@ const MemoryCardList: React.FC<{ store: StateStore }> = observer(({ store }) => 
   );
 });
 
-const Panel: React.FC<Props> = observer(({ store, open, anchorPos, onClose, onAbort }) => {
+const Panel: React.FC<Props> = observer(({ store, open, anchorPos, allowAutoMode = true, onClose, onAbort }) => {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<'settings' | 'about'>('settings');
 
@@ -293,6 +294,7 @@ const Panel: React.FC<Props> = observer(({ store, open, anchorPos, onClose, onAb
   };
 
   const isActive = store.isAgentEnabled;
+  const displayedMode = !allowAutoMode && store.agentMode === 'auto' ? 'on' : store.agentMode;
 
   const handleModeChange = (mode: 'off' | 'on' | 'auto') => {
     if (mode === 'off' && isActive) {
@@ -362,7 +364,7 @@ const Panel: React.FC<Props> = observer(({ store, open, anchorPos, onClose, onAb
               <ToggleButtonGroup
                 exclusive
                 size="small"
-                value={store.agentMode}
+                value={displayedMode}
                 sx={{ width: '100%' }}
                 onChange={(_event, value) => {
                   const nextMode = value as 'off' | 'on' | 'auto' | null;
@@ -371,7 +373,9 @@ const Panel: React.FC<Props> = observer(({ store, open, anchorPos, onClose, onAb
               >
                 <ToggleButton sx={{ flex: 1, whiteSpace: 'nowrap' }} value="off">{t('panel_mode_off')}</ToggleButton>
                 <ToggleButton sx={{ flex: 1, whiteSpace: 'nowrap' }} value="on">{t('panel_mode_on')}</ToggleButton>
-                <ToggleButton sx={{ flex: 1, whiteSpace: 'nowrap' }} value="auto">{t('panel_mode_auto')}</ToggleButton>
+                {allowAutoMode && (
+                  <ToggleButton sx={{ flex: 1, whiteSpace: 'nowrap' }} value="auto">{t('panel_mode_auto')}</ToggleButton>
+                )}
               </ToggleButtonGroup>
             </Box>
 

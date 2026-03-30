@@ -4,7 +4,7 @@
  * 使用 MobX autorun 保持按钮与 Store 同步；MutationObserver + 心跳
  * 应对 Svelte SPA 路由切换时输入区被卸载重建的问题。
  *
- * 支持 off / on / auto 三态切换。
+ * 当前仅支持 off / on 二态切换（zhipu 临时禁用 auto）。
  */
 import { useEffect, useRef } from 'react';
 import { autorun } from 'mobx';
@@ -88,7 +88,7 @@ export function useZhipuInlineToggle(
           btn.style.color   = '#1a73e8';
           btn.style.borderColor = '#1a73e8';
           btn.style.backgroundColor = 'rgba(26,115,232,.08)';
-          txt.textContent = store.agentMode === 'auto' ? i18n.t('toggle_auto') : i18n.t('toggle_on');
+          txt.textContent = i18n.t('toggle_on');
           btn.title = store.config.language === 'en'
             ? 'Deep Think ON — click to turn off'
             : '深度思考已开启 — 点击关闭';
@@ -195,8 +195,6 @@ export function useZhipuInlineToggle(
         }
         if (store.agentMode === 'off') {
           store.setAgentMode('on');
-        } else if (store.agentMode === 'on') {
-          store.setAgentMode('auto');
         } else {
           store.setAgentMode('off');
         }

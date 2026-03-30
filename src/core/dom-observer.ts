@@ -108,6 +108,10 @@ export class DOMObserver {
         this.store.setGenerating(false);
         this.store.lastRawText = this.adapter.getLastResponseText();
         this.beautifier.process();
+        // 若 beautifier 正忙（domBusy），则延迟重试一次确保 DOM 清理执行
+        if (this.beautifier.isDomBusy()) {
+          setTimeout(() => { this.beautifier.process(); }, 150);
+        }
         if (this.store.isAgentEnabled && !this.store.userAborted) {
           if (this.store.userWorkflowPhase === 'intent') {
             this.startIntentHandoff(this.store.lastRawText, this.store.config.loopDelay);
@@ -123,6 +127,27 @@ export class DOMObserver {
       } else if (this.adapter.isGenerationStarted(mutation) && !this.store.isGenerating) {
         this.store.setGenerating(true);
         wasGenerating = true;
+        // 同一 mutation record 里同时包含 start + complete（如 Zhipu 整块渲染场景）
+        if (this.adapter.isGenerationComplete(mutation)) {
+          this.store.setGenerating(false);
+          this.store.lastRawText = this.adapter.getLastResponseText();
+          this.beautifier.process();
+          if (this.beautifier.isDomBusy()) {
+            setTimeout(() => { this.beautifier.process(); }, 150);
+          }
+          if (this.store.isAgentEnabled && !this.store.userAborted) {
+            if (this.store.userWorkflowPhase === 'intent') {
+              this.startIntentHandoff(this.store.lastRawText, this.store.config.loopDelay);
+            } else if (this.store.userWorkflowPhase === 'clarify') {
+              // Do nothing: waiting for user to answer the questionnaire
+            } else if (this.store.currentLoop > 0 || this.store.isSummarizing) {
+              setTimeout(() => {
+                void this.engine.evaluateAndActAsync(this.store.lastRawText);
+              }, this.store.config.loopDelay);
+            }
+          }
+          wasGenerating = false;
+        }
       }
     }
 
