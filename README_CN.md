@@ -19,6 +19,52 @@ G-Master 是一个基于 Manifest V3 的强大浏览器扩展，专为强化 Gem
 
 ---
 
+## 💡 为什么你需要 G-Master？(FAQ)
+
+<div align="center">
+
+![FAQ](https://img.shields.io/badge/FAQ-G--Master%20价值说明-0A7EA4?style=for-the-badge)
+![System Prompt](https://img.shields.io/badge/System%20Prompt-持久注入-1B5E20?style=for-the-badge)
+![Deep Think](https://img.shields.io/badge/Deep%20Think-多轮推理纠错-B71C1C?style=for-the-badge)
+![Local Workspace](https://img.shields.io/badge/Local%20Workspace-本地读写与执行-4A148C?style=for-the-badge)
+![Tavily Search](https://img.shields.io/badge/Tavily-实时联网搜索-0D47A1?style=for-the-badge)
+
+</div>
+
+> [!TIP]
+> 如果你希望 Gemini 不只是“会聊天”，而是具备长期角色记忆、深度推理、实时检索与本地工作流能力，G-Master 就是这套增强引擎。
+
+<details>
+<summary><strong>Q: 网页版 Gemini 支持 System Prompt (系统提示词) 吗？</strong></summary>
+
+**A:** 原生不支持。安装 G-Master 后，你可以一键注入并持久化全局 System Prompt，让 Gemini 更稳定地扮演特定角色，并减少上下文漂移。
+
+</details>
+
+<details>
+<summary><strong>Q: 如何让 Gemini 像 O1 一样进行深度思考 (Deep Think)？</strong></summary>
+
+**A:** G-Master 为 Gemini 引入了真正的多轮 Deep Think 循环。它会驱动模型进行自我博弈、推演与漏洞纠错，将复杂逻辑准确率提升 **41%**，代码一次通过率提升至 **88%**。
+
+</details>
+
+<details>
+<summary><strong>Q: Gemini 可以直接读取或修改我电脑上的本地文件吗？</strong></summary>
+
+**A:** 可以。G-Master 的本地沙盒突破 (Local Workspace) 能在你授权后，支持本地读取、写入文件，甚至运行代码，打造真正可落地的本地 AI 工作流。
+
+</details>
+
+<details>
+<summary><strong>Q: Gemini 的知识库太旧怎么办？</strong></summary>
+
+**A:** G-Master 内置 Tavily 搜索引擎，打破基础模型的时间边界，在对话中补充并抓取最新资讯。
+
+</details>
+
+---
+
+
 ## 📸 效果与操作指南
 
 ### 界面与特性
@@ -43,7 +89,7 @@ G-Master 是一个基于 Manifest V3 的强大浏览器扩展，专为强化 Gem
 引入 G-Master 之后，复杂的逻辑能力与编码任务均显著提升了 **40% 以上**，幻觉率大幅降低。
 
 <div align="center">
-  <img src="public/images/performance_comparison.png" alt="性能对比图表" width="80%" />
+  <img src="docs/images/performance_comparison.png" alt="性能对比图表" width="80%" />
 </div>
 
 | 评测维度 | 🤖 标准 Gemini | 🌟 G-Master 深度思考 | 提升幅度 |
@@ -80,7 +126,6 @@ graph TD
     style D fill:#D84315,stroke:#EF6C00,stroke-width:2px,color:#fff
 ```
 
----
 
 ## 🛠️ 简明开发指南
 
