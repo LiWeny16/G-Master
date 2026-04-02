@@ -1,16 +1,17 @@
 ﻿<div align="center">
   <img src="public/icons/icon-origin.png" alt="G-Master Logo" width="128" />
   <h1>G-Master</h1>
-  <p><em>Injecting Soul into Gemini: Multi-turn Deep Think, System Prompts, and Web Search Enhancement</em></p>
+  <p><em>Injecting Soul into Gemini: Multi-turn Deep Think, System Prompts, Local Workspace & Web Search Enhancement</em></p>
 
   [English](README.md) | [简体中文](README_CN.md)
   <br/><br/>
 
   [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-  ![React](https://img.shields.io/badge/React-18-blue)
-  ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue)
+  ![React](https://img.shields.io/badge/React-19-blue)
+  ![TypeScript](https://img.shields.io/badge/TypeScript-6.x-blue)
   ![Vite](https://img.shields.io/badge/Vite-Plugin-purple)
   ![Manifest V3](https://img.shields.io/badge/Manifest-V3-success)
+  ![Version](https://img.shields.io/badge/Version-1.3.1-orange)
 </div>
 
 <br/>
@@ -26,8 +27,9 @@ G-Master is a powerful Manifest V3 browser extension built to supercharge Gemini
 ![FAQ](https://img.shields.io/badge/FAQ-Why%20G--Master-0A7EA4?style=for-the-badge)
 ![System Prompt](https://img.shields.io/badge/System%20Prompt-Persistent%20Injection-1B5E20?style=for-the-badge)
 ![Deep Think](https://img.shields.io/badge/Deep%20Think-Multi--turn%20Reasoning-B71C1C?style=for-the-badge)
-![Local Workspace](https://img.shields.io/badge/Local%20Workspace-Read%20Write%20Execute-4A148C?style=for-the-badge)
+![Local Workspace](https://img.shields.io/badge/Local%20Workspace-Read%20Search%20Attach-4A148C?style=for-the-badge)
 ![Tavily Search](https://img.shields.io/badge/Tavily-Real--time%20Search-0D47A1?style=for-the-badge)
+![Agent Loop](https://img.shields.io/badge/Agent%20Loop-Tool%20Orchestration-6A1B9A?style=for-the-badge)
 
 </div>
 
@@ -51,7 +53,7 @@ G-Master is a powerful Manifest V3 browser extension built to supercharge Gemini
 <details>
 <summary><strong>Q: Can Gemini directly read or modify files on my computer?</strong></summary>
 
-**A:** Yes. With your authorization, G-Master's Local Workspace capability supports local file read/write and even code execution, enabling practical local AI workflows.
+**A:** Yes. With your authorization, G-Master's Local Workspace grants access to your local file system via the browser's File System Access API. You can browse directories, read files, search by name or content, and even **attach any file (images, PDFs, documents, videos) directly into the Gemini chat input** — all without leaving the browser.
 
 </details>
 
@@ -75,11 +77,17 @@ G-Master is a powerful Manifest V3 browser extension built to supercharge Gemini
 
 ## 🚀 Core Features
 
-- 🔄 **Multi-turn Deep Think Loop**: Drives the model through self-play, iterative deduction, and automatic flaw correction.
+- 🔄 **Multi-turn Deep Think Loop**: Drives the model through self-play, iterative deduction, and automatic flaw correction via a unified `AgentLoop`.
 - 🎯 **System Prompt Management**: Inject persistent role definitions and global reasoning context with one click.
 - 📊 **Context & Intelligence Monitor**: Visualize current context utilization and reasoning depth in real time.
 - 🌐 **Tavily Search Integration**: Built-in web search overcomes stale model knowledge with up-to-date information.
-- 📁 **Local Workspace Capability**: Read/write local files and execute code in a practical local workflow.
+- 📁 **Local Workspace** — full-featured file toolkit for AI workflows:
+  - 🔍 `search_files`: dual-mode smart search (keyword AND-matching + glob patterns like `src/**/*.ts`)
+  - 📄 `grep_files`: search inside file contents with regex support (like `grep -r`)
+  - 📎 `attach_file_to_chat`: paste any file (image / PDF / doc / video) directly into the AI chat input
+  - 📖 `read_file`: read files with optional line-range (`startLine` / `endLine`) for large files
+  - 💾 Auto-restore previously authorized workspace on page load
+- 🎮 **Sudoku Mini-game**: a built-in Sudoku game to keep your brain sharp between prompts.
 
 ---
 
@@ -109,23 +117,31 @@ G-Master is more than a shortcut wrapper. It is an engineered closed-loop reason
 
 ```mermaid
 graph TD
-  A[User Input + System Prompt] --> B{G-Master: Need Deep Think?}
-  B -- No --> C[Standard Fast LLM Response]
-  B -- Yes --> D[Start Deep Think Loop]
-    
-    subgraph Loop [♻️ Deep Think Feedback Loop]
-  D --> E[Initial Reasoning and Draft]
+  A[User Input + System Prompt] --> B{AgentLoop: Mode?}
+  B -- AUTO --> C[FLASH Model: Quick Assessment]
+  B -- ON --> D[Loop Model: Deep Think]
+  C -- Simple answer --> Z((Final Answer))
+  C -- Needs depth --> D
+
+  subgraph Loop [♻️ Deep Think & Tool Orchestration Loop]
+  D --> E[Reasoning & Drafting]
   E --> F[Multi-dimensional Review / Context Tracking]
-  F --> |Insufficient evidence or weak logic| G[Invoke Tools: Tavily Search / Local File Access]
-    G --> E
-  F --> |Logically solid and robust| H[Exit Safe Loop]
-    end
-    
-  H --> I((Filter and Extract Final High-Quality Answer))
-  I --> J[Render elegantly in the extension panel]
-    
-    style I fill:#4CAF50,stroke:#388E3C,stroke-width:2px,color:#fff
-    style D fill:#D84315,stroke:#EF6C00,stroke-width:2px,color:#fff
+  F --> |Weak logic or missing evidence| G{Tool Dispatcher}
+  G --> G1[🌐 Tavily Web Search]
+  G --> G2[📁 Local Workspace Tools]
+  G2 --> G2a[search_files / grep_files]
+  G2 --> G2b[read_file / read_files]
+  G2 --> G2c[attach_file_to_chat]
+  G1 & G2a & G2b & G2c --> E
+  F --> |Solid and robust| H[Exit Loop]
+  end
+
+  H --> Z
+  Z --> J[Render elegantly in extension panel]
+
+  style Z fill:#4CAF50,stroke:#388E3C,stroke-width:2px,color:#fff
+  style D fill:#D84315,stroke:#EF6C00,stroke-width:2px,color:#fff
+  style G fill:#1565C0,stroke:#0D47A1,stroke-width:2px,color:#fff
 ```
 
 ---
