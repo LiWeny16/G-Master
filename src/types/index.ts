@@ -16,7 +16,7 @@ export type { SiteKey };
 
 export type AgentMode = 'off' | 'on' | 'auto';
 export type LoopModel = 'fast' | 'think' | 'pro';
-export type UserWorkflowPhase = 'none' | 'intent' | 'deep' | 'clarify';
+export type UserWorkflowPhase = 'idle' | 'running' | 'clarify';
 
 /** 单条澄清问题（由 AI 返回，展示为问卷卡片） */
 export interface ClarifyQuestion {
@@ -79,11 +79,11 @@ export const DEFAULT_MARKERS: ActionMarkerConfig = {
 };
 
 export const DEFAULT_REVIEW_PHASES_ZH: string[] = [
-  '从【逻辑结构】角度：找出论证链条中的跳跃、循环论证或未被证明的前提假设',
-  '从【反驳视角】角度：扮演最强烈的反对者，给出最具破坏力的反例或反驳论点',
-  '从【边界情况】角度：找出哪些特殊场景、极端条件或例外情况会让当前结论失效',
-  '从【事实核查】角度：挑战你援引的数据、来源和案例，是否有更权威或更新的信息',
-  '从【可行性】角度：评估方案落地时会遇到的实际阻力、成本与取舍',
+  '从[逻辑结构]角度：找出论证链条中的跳跃、循环论证或未被证明的前提假设',
+  '从[反驳视角]角度：扮演最强烈的反对者，给出最具破坏力的反例或反驳论点',
+  '从[边界情况]角度：找出哪些特殊场景、极端条件或例外情况会让当前结论失效',
+  '从[事实核查]角度：挑战你援引的数据、来源和案例，是否有更权威或更新的信息',
+  '从[可行性]角度：评估方案落地时会遇到的实际阻力、成本与取舍',
 ];
 
 export const DEFAULT_REVIEW_PHASES_EN: string[] = [
@@ -100,7 +100,15 @@ export function getReviewPhases(lang: 'zh' | 'en'): string[] {
 
 export function getSystemPromptTemplate(lang: 'zh' | 'en', markers: ActionMarkerConfig): string {
   if (lang === 'en') {
-    return `⟪DT:🧠 Deep Think Mode Activated⟫\n[System Directive]: Please enter "Deep Reflection and Self-Review" mode. Strictly adhere to:
+    return `⟪DT:🧠 Deep Think Mode Activated⟫
+[Execution Environment — READ CAREFULLY]
+You are running inside an automated Agent Loop system, NOT directly chatting with the user.
+- A host system intercepts every response you produce. Your intermediate outputs are consumed by the host.
+- Only your final summary (after all thinking rounds) will be shown to the user.
+- The host injects tool results via [TOOL_RESULT: ...] — these are system messages, not user messages.
+- [TOOL_CALL: name({...})] is a LIVE EXECUTION PRIMITIVE. Output = Immediate execution. NEVER use it as an example or illustration.
+
+[System Directive]: Enter "Deep Reflection and Self-Review" mode. Strictly adhere to:
 1. No fabrication. If unsure, say "I don't know".
 2. Claims must provide credible data sources or reference URLs.
 3. [Anchor Principle] All thinking must revolve around the user's original query. Do not deviate.
@@ -109,13 +117,21 @@ export function getSystemPromptTemplate(lang: 'zh' | 'en', markers: ActionMarker
 6. [Clarification] If critical info is missing, output at the end: \n[CLARIFY]\n[{"question":"...","options":["A","B"]}]\n[CLARIFY]\nMax 3 questions. DO NOT output if info is sufficient.
 Strictly adhere.`;
   }
-  return `⟪DT:🧠 深度思考模式已激活⟫\n[系统指令]：请进入"深度反思与自我审查"模式。严格遵守：
+  return `⟪DT:🧠 深度思考模式已激活⟫
+[执行环境 — 务必理解]
+你正运行在一个自动化 Agent 循环系统中，并非直接与用户对话。
+- 宿主系统会拦截你的每一条输出，你的中间输出由宿主消费，不会展示给用户。
+- 只有最终总结（所有思考轮次完成后）才会呈现给用户。
+- 宿主通过 [TOOL_RESULT: ...] 注入工具执行结果——这是系统消息，不是用户说的话。
+- [TOOL_CALL: name({...})] 是实时执行原语。输出 = 立刻执行。绝不要将其用作示例或说明。
+
+[系统指令]：请进入"深度反思与自我审查"模式。严格遵守：
 1. 严禁胡编乱造。不确定就说"我不确定"。
 2. 论点须提供可信数据来源或参考 URL。
-3. 【锚定原则】所有思考必须围绕用户原始问题展开，禁止偏离。
-4. 【自我质疑】【强制多轮思考】在回答后，必须主动检查：逻辑链是否有跳跃？是否存在反例？是否有遗漏的边界情况？若任何一项存疑，在回答【最末尾】附上 ${markers.continueMarker}，并另起一行输出\n[NEXT_PROMPT]\n[具体质疑问题]\n[NEXT_PROMPT]
-5. 【高标准结束条件】只有同时满足以下全部条件才能输出 ${markers.finishMarker}：(a) 核心论点有事实依据支撑；(b) 已从反对角度检验并无法推翻；(c) 主要边界情况已被覆盖；(d) 对原始问题有直接、完整的回应。如有任何条件未满足，必须继续输出 ${markers.continueMarker}。
-6. 【澄清问卷】若缺少关键信息，可在最末尾输出：\n[CLARIFY]\n[{"question":"...","options":["A","B"]}]\n[CLARIFY]\n最多3题，信息足够时请勿输出。
+3. [锚定原则] 所有思考必须围绕用户原始问题展开，禁止偏离。
+4. [自我质疑][强制多轮思考] 在回答后，必须主动检查：逻辑链是否有跳跃？是否存在反例？是否有遗漏的边界情况？若任何一项存疑，在回答最末尾附上 ${markers.continueMarker}，并另起一行输出\n[NEXT_PROMPT]\n[具体质疑问题]\n[NEXT_PROMPT]
+5. [高标准结束条件] 只有同时满足以下全部条件才能输出 ${markers.finishMarker}：(a) 核心论点有事实依据支撑；(b) 已从反对角度检验并无法推翻；(c) 主要边界情况已被覆盖；(d) 对原始问题有直接、完整的回应。如有任何条件未满足，必须继续输出 ${markers.continueMarker}。
+6. [澄清问卷] 若缺少关键信息，可在最末尾输出：\n[CLARIFY]\n[{"question":"...","options":["A","B"]}]\n[CLARIFY]\n最多3题，信息足够时请勿输出。
 严格遵守。`;
 }
 

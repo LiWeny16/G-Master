@@ -54,16 +54,48 @@ function parseArgObjectString(inner: string): Record<string, unknown> {
 }
 
 /**
+ * 计算文本中所有 markdown 代码块（```...```）的 [start, end] 范围。
+ * 用于在解析工具调用时跳过代码块内的伪调用。
+ */
+function computeCodeBlockRanges(text: string): Array<[number, number]> {
+  const ranges: Array<[number, number]> = [];
+  const re = /```[\s\S]*?```/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    ranges.push([m.index, m.index + m[0].length]);
+  }
+  return ranges;
+}
+
+function isInsideCodeBlock(pos: number, ranges: Array<[number, number]>): boolean {
+  for (const [s, e] of ranges) {
+    if (pos >= s && pos < e) return true;
+    if (s > pos) break; // ranges are sorted
+  }
+  return false;
+}
+
+/**
  * 解析文本中的工具调用，格式示例：
  * - `[TOOL_CALL: foo({"a":"b"})]`
  * - `[TOOL_CALL: web_search("search query")]`
+ *
+ * 防误触：忽略 markdown 代码块（```...```）内的工具调用语法。
  */
 export function parseToolCalls(text: string): Array<{ name: string; args: Record<string, unknown> }> {
   const out: Array<{ name: string; args: Record<string, unknown> }> = [];
+  const codeBlockRanges = computeCodeBlockRanges(text);
   let i = 0;
   while (i < text.length) {
     const start = text.indexOf(TOOL_CALL_PREFIX, i);
     if (start === -1) break;
+
+    // 跳过代码块内的工具调用语法（模型可能在解释中引用）
+    if (isInsideCodeBlock(start, codeBlockRanges)) {
+      i = start + 1;
+      continue;
+    }
+
     const afterTag = start + TOOL_CALL_PREFIX.length;
     const nameMatch = text.slice(afterTag).match(/^\s*([a-zA-Z_]\w*)\s*\(/);
     if (!nameMatch) {

@@ -21,6 +21,7 @@ const zh = {
     // Panel
     panel_tab_settings: '设置',
     panel_tab_about: '关于',
+    panel_tab_sudoku: '数独',
     panel_about_desc: '一个为 Gemini 注入深度思考和 Agent 能力的扩展。',
     panel_about_author: '作者：Onion',
     panel_about_github: 'GitHub 仓库',
@@ -83,6 +84,26 @@ const zh = {
     settings_reset_default: '恢复默认设置',
     settings_reset_all: '重置所有设置与存储',
     settings_language: '界面语言',
+
+    // Workspace Tab
+    panel_tab_workspace: '工作区',
+    workspace_title: '本地工作区',
+    workspace_desc: '授权后 Agent 可自主浏览和读取你的项目文件。',
+    workspace_select_folder: '选择工作区文件夹',
+    workspace_change_folder: '更换文件夹',
+    workspace_disconnect: '断开连接',
+    workspace_connected: '已连接：{{name}}',
+    workspace_not_connected: '未连接工作区',
+    workspace_not_supported: '当前浏览器不支持文件夹访问',
+    workspace_enable_toggle: '启用工作区文件读取',
+    workspace_file_tree: '文件浏览',
+    workspace_empty: '文件夹为空',
+    workspace_loading: '加载中…',
+    workspace_restore_failed: '自动恢复失败，请重新选择文件夹',
+    workspace_permission_needed: '需要重新授权',
+    workspace_reauthorize: '重新授权',
+
+    // Site toggles
     settings_site_section: '启用网站',
     settings_site_gemini: 'Gemini',
     settings_site_gemini_enterprise: 'Gemini 企业版',

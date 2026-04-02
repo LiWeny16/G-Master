@@ -10,6 +10,93 @@ import {
   parseTagBoundary,
   removeTaggedBlock,
 } from './parsers';
+import { parseToolCalls, stripToolCallsFromText } from './tool-call-parser';
+
+// ── Tool Call Card 渲染助手 ──
+
+function escHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function getExtClass(filename: string): string {
+  const ext = (filename.split('.').pop() ?? '').toLowerCase();
+  const known: Record<string, string> = {
+    ts: 'ts', tsx: 'tsx', js: 'js', jsx: 'jsx',
+    css: 'css', scss: 'scss', html: 'html', json: 'json',
+    md: 'md', mdx: 'mdx', py: 'py', go: 'go', rs: 'rs',
+  };
+  return `dt-ext-${known[ext] ?? 'other'}`;
+}
+
+function mkSvg(paths: string, size = 12): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+}
+
+const IC_FOLDER = `<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>`;
+const IC_FILE  = `<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/>`;
+const IC_SEARCH = `<circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>`;
+const IC_GLOBE  = `<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>`;
+
+function mkFileChip(filePath: string): HTMLElement {
+  const name = filePath.replace(/\\/g, '/').split('/').pop() ?? filePath;
+  const ext = (name.split('.').pop() ?? '').toLowerCase();
+  const chip = document.createElement('span');
+  chip.className = 'dt-tool-call-chip';
+  chip.innerHTML = `${mkSvg(IC_FILE)}<span class="dt-file-ext ${getExtClass(name)}">${escHtml(ext || '?')}</span><span class="dt-tool-chip-text">${escHtml(name)}</span>`;
+  return chip;
+}
+
+function buildToolCallCard(
+  name: string,
+  args: Record<string, unknown>,
+  lang: 'zh' | 'en',
+): HTMLElement {
+  const row = document.createElement('span');
+  row.className = 'dt-tool-call-row';
+  row.dataset.dtToolCard = '1';
+
+  if (name === 'list_directory') {
+    const path = typeof args.path === 'string' ? args.path : '.';
+    const chip = document.createElement('span');
+    chip.className = 'dt-tool-call-chip';
+    const label = lang === 'en' ? 'Browse' : '浏览目录';
+    chip.innerHTML = `${mkSvg(IC_FOLDER)}<span class="dt-tool-chip-label">${label}</span><span class="dt-tool-chip-text">${escHtml(path)}</span>`;
+    row.appendChild(chip);
+  } else if (name === 'read_file' || name === 'read_local_file') {
+    const path = typeof args.path === 'string' ? args.path : '';
+    row.appendChild(mkFileChip(path));
+  } else if (name === 'read_files') {
+    const paths = (Array.isArray(args.paths) ? args.paths : []).filter((p): p is string => typeof p === 'string');
+    for (const p of paths.slice(0, 8)) row.appendChild(mkFileChip(p));
+    if (paths.length > 8) {
+      const more = document.createElement('span');
+      more.className = 'dt-tool-call-chip';
+      more.textContent = `+${paths.length - 8}`;
+      row.appendChild(more);
+    }
+  } else if (name === 'search_files') {
+    const pattern = typeof args.pattern === 'string' ? args.pattern : '*';
+    const chip = document.createElement('span');
+    chip.className = 'dt-tool-call-chip';
+    const label = lang === 'en' ? 'Search files' : '搜索文件';
+    chip.innerHTML = `${mkSvg(IC_SEARCH)}<span class="dt-tool-chip-label">${label}</span><span class="dt-tool-chip-text">${escHtml(pattern)}</span>`;
+    row.appendChild(chip);
+  } else if (name === 'web_search') {
+    const query = typeof args.query === 'string' ? args.query : '';
+    const display = query.length > 60 ? query.slice(0, 60) + '…' : query;
+    const chip = document.createElement('span');
+    chip.className = 'dt-tool-call-chip';
+    const label = lang === 'en' ? 'Web search' : '联网搜索';
+    chip.innerHTML = `${mkSvg(IC_GLOBE)}<span class="dt-tool-chip-label">${label}</span><span class="dt-tool-chip-text">${escHtml(display)}</span>`;
+    row.appendChild(chip);
+  } else {
+    const chip = document.createElement('span');
+    chip.className = 'dt-tool-call-chip';
+    chip.innerHTML = `<span class="dt-tool-chip-label">${escHtml(name)}</span>`;
+    row.appendChild(chip);
+  }
+  return row;
+}
 
 // 一键开关：关闭后不再把内部标记替换为 UI 标签/徽章，仅保留原始文本显示。
 export const ENABLE_MARKER_UI_REPLACEMENT = true;
@@ -221,9 +308,10 @@ export class DOMBeautifier {
     }
 
     // Case 3: 仅有记忆注入（无系统 Prompt，内存前缀）
-    const memZh = fullText.indexOf('【用户设定的全局记忆');
+    const memZh = fullText.indexOf('[用户设定的全局记忆');
+    const memZhLegacy = fullText.indexOf('【用户设定的全局记忆');
     const memEn = fullText.indexOf('[User Pinned Memories');
-    const candidates = [memZh, memEn].filter((i) => i > 0);
+    const candidates = [memZh, memZhLegacy, memEn].filter((i) => i > 0);
     if (candidates.length > 0) {
       const memIdx = Math.min(...candidates);
       const userPart = fullText.slice(0, memIdx).trim();
@@ -363,6 +451,13 @@ export class DOMBeautifier {
       if (/^AUTO\s*(决策|Decision)[:：]/.test(trimmed)) continue;
       if (/^(进入深度模式|进入问卷模式|Entering deep mode|Entering clarification mode)[。!！…\s]*$/.test(trimmed)) continue;
       if (parseIntentJson(trimmed)) continue;
+      // 过滤系统内部通信标记
+      if (/\[系统内部[\s—]|\[System Internal[\s—]/.test(trimmed)) continue;
+      if (/\[TOOL_RESULT:/.test(trimmed)) continue;
+      if (/\[TOOL_CALL:/.test(trimmed)) continue;
+      // 过滤动作标记行
+      if (/\[ACTION:\s*(THINK_MORE|GOAL_REACHED)\]/.test(trimmed)) continue;
+      if (/\[THINK_MORE\]|\[GOAL_REACHED\]/.test(trimmed)) continue;
 
       let clean = line;
       clean = clean.split(continueMarker).join('');
@@ -370,7 +465,10 @@ export class DOMBeautifier {
       out.push(clean);
     }
 
-    return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+    let result = out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+    // 最终清理：移除可能残留的 [TOOL_CALL: ...] 语法
+    result = stripToolCallsFromText(result);
+    return result;
   }
 
   private processUserBubbles(): void {
@@ -383,7 +481,7 @@ export class DOMBeautifier {
       el.dataset.dtSig = sig;
 
       const hasAutoDecisionMarker = fullText.includes('[G-Master AUTO 决策]') || fullText.includes('[G-Master AUTO Decision]');
-      const hasMemoryInjection = fullText.includes('【用户设定的全局记忆') || fullText.includes('[User Pinned Memories');
+      const hasMemoryInjection = fullText.includes('[用户设定的全局记忆') || fullText.includes('【用户设定的全局记忆') || fullText.includes('[User Pinned Memories');
       const m = fullText.match(dtPattern);
 
       if (!m && !hasAutoDecisionMarker && !hasMemoryInjection) return;
@@ -407,7 +505,7 @@ export class DOMBeautifier {
           line.classList.add('dt-hidden');
           continue;
         }
-        if (raw.includes('【用户设定的全局记忆') || raw.includes('[User Pinned Memories')) {
+        if (raw.includes('[用户设定的全局记忆') || raw.includes('【用户设定的全局记忆') || raw.includes('[User Pinned Memories')) {
           inMemoryBlock = true;
           line.classList.add('dt-hidden');
           continue;
@@ -576,6 +674,34 @@ export class DOMBeautifier {
     });
   }
 
+  /** 将 responseEl 内所有 [TOOL_CALL:] 所在的块元素替换为 UI 卡片。 */
+  private renderToolCallBlocks(responseEl: HTMLElement): void {
+    const lang = this.store.config.language;
+    responseEl.querySelectorAll('p, pre, li').forEach((child) => {
+      const el = child as HTMLElement;
+      if (el.dataset.dtToolCard) return;
+      if (el.closest('[data-dt-tool-card]')) return;
+      if (el.closest('.dt-resp-badge, .dt-react-clarify-mount')) return;
+
+      const ct = el.textContent ?? '';
+      if (!ct.includes('[TOOL_CALL:')) return;
+
+      const toolCalls = parseToolCalls(ct);
+      if (toolCalls.length === 0) return;
+
+      const remaining = stripToolCallsFromText(ct).trim();
+      el.innerHTML = '';
+      el.dataset.dtToolCard = '1';
+
+      for (const tc of toolCalls) {
+        el.appendChild(buildToolCallCard(tc.name, tc.args, lang));
+      }
+      if (remaining) {
+        el.appendChild(document.createTextNode(remaining));
+      }
+    });
+  }
+
   private processResponseMarkers(): void {
     const isStillGenerating = this.store.isGenerating;
     const responseMessages = Array.from(this.adapter.getResponseMessages()) as HTMLElement[];
@@ -599,11 +725,12 @@ export class DOMBeautifier {
       const hasNextPrompt = text.includes('[NEXT_PROMPT');
       const hasClarify = text.includes('[CLARIFY]');
       const hasRouter = /\[(?:\/)?router_config\]|<\/?router_config>/i.test(text);
+      const hasToolCall = text.includes('[TOOL_CALL:') || text.includes('[TOOL_RESULT:');
       const intentInfo = parseIntentJson(text);
       const nextPromptText = this.parseNextPromptText(text);
       const hasExistingUi = Boolean(uiStack.querySelector('.dt-resp-badge, .dt-next-prompt-card, .dt-react-clarify-mount'));
 
-      if (!hasContinue && !hasFinish && !hasNextPrompt && !intentInfo && !hasClarify && !hasRouter && !hasExistingUi) return;
+      if (!hasContinue && !hasFinish && !hasNextPrompt && !intentInfo && !hasClarify && !hasRouter && !hasExistingUi && !hasToolCall) return;
 
       // 移除旧 badge
       const oldBadge = uiStack.querySelector('.dt-resp-badge') as HTMLElement | null;
@@ -662,8 +789,9 @@ export class DOMBeautifier {
 
       if (oldBadge) oldBadge.remove();
 
-      // 如果还在生成中，为了不破坏 DOM 文本打断流读取，我们暂不直接清理文本节点或加上隐藏 class。
-      // 只追加 Badge 提示状态。等完成生成后再执行真正的“净化”操作。
+      // 将 [TOOL_CALL:] 行替换为可视化卡片（生成完毕后才替换，避免打断流式输出）
+      this.renderToolCallBlocks(el);
+
       // 遍历文本节点，删除标记文本
       const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
       const textNodes: Text[] = [];
@@ -675,6 +803,8 @@ export class DOMBeautifier {
 
       for (const node of textNodes) {
         if ((node as unknown as HTMLElement).closest?.('.dt-resp-badge') || (node as unknown as HTMLElement).closest?.('.dt-react-clarify-mount')) continue;
+        // 跳过已被替换为工具卡片的节点内容
+        if ((node as unknown as HTMLElement).closest?.('[data-dt-tool-card]')) continue;
 
         const originalNodeText = node.textContent ?? '';
         let nodeText = originalNodeText;
@@ -724,11 +854,20 @@ export class DOMBeautifier {
             if (/^(进入深度模式|进入问卷模式|Entering deep mode|Entering clarification mode)/.test(trimmed)) return false;
             // 过滤 "进入深度模式执行搜索与分析" 等变体
             if (/(深度模式|问卷模式|deep mode|clarification mode).*[。!！…]*$/.test(trimmed) && trimmed.length < 50) return false;
+            // 过滤系统内部通信标记（工具调用、工具结果、系统内部消息）
+            if (/\[TOOL_CALL:/.test(trimmed)) return false;
+            if (/\[TOOL_RESULT:/.test(trimmed)) return false;
+            if (/\[系统内部[\s—]|\[System Internal[\s—]/.test(trimmed)) return false;
+            // 过滤动作标记行（可能出现在行内任意位置）
+            if (/\[ACTION:\s*(THINK_MORE|GOAL_REACHED)\]/.test(trimmed)) return false;
+            if (/\[THINK_MORE\]|\[GOAL_REACHED\]/.test(trimmed)) return false;
             return true;
           })
           .join('\n');
         if (t.includes(continueMarker)) { t = t.split(continueMarker).join(''); }
         if (t.includes(finishMarker)) { t = t.split(finishMarker).join(''); }
+        // 清理可能内联在文本中的 [TOOL_CALL: ...] 片段
+        t = stripToolCallsFromText(t);
 
         const changed = t !== originalNodeText;
         if (changed) node.textContent = t;
@@ -740,6 +879,8 @@ export class DOMBeautifier {
       let hidingNextPromptTemp = false;
       el.querySelectorAll('p, li, span, pre, code').forEach((child) => {
         if ((child as HTMLElement).closest?.('.dt-resp-badge')) return;
+        // 工具调用卡片内部元素跳过
+        if ((child as HTMLElement).closest?.('[data-dt-tool-card]')) return;
         const ct = (child.textContent ?? '').trim();
 
         const clarifyBoundary = parseTagBoundary(ct, CLARIFY_TAG, hidingClarifyTemp);
@@ -797,6 +938,20 @@ export class DOMBeautifier {
         if (parseIntentJson(ct) || (ct.startsWith('{') && ct.includes('"route"'))) {
           child.classList.add('dt-hidden');
         }
+        // 隐藏工具调用和系统内部通信标记
+        if (/\[TOOL_CALL:/.test(ct)) {
+          child.classList.add('dt-hidden');
+        }
+        if (/\[TOOL_RESULT:/.test(ct)) {
+          child.classList.add('dt-hidden');
+        }
+        if (/\[系统内部[\s—]|\[System Internal[\s—]/.test(ct)) {
+          child.classList.add('dt-hidden');
+        }
+        // 隐藏动作标记
+        if (/\[ACTION:\s*(THINK_MORE|GOAL_REACHED)\]|\[THINK_MORE\]|\[GOAL_REACHED\]/.test(ct)) {
+          child.classList.add('dt-hidden');
+        }
       });
 
       // 移除末尾及中间死去的空段落
@@ -808,12 +963,22 @@ export class DOMBeautifier {
         }
       });
 
+      // 折叠所有子项均被隐藏的 ol/ul 容器，避免空白编号列表
+      el.querySelectorAll('ol, ul').forEach((list) => {
+        const items = Array.from(list.querySelectorAll(':scope > li'));
+        if (items.length > 0 && items.every((li) => (li as HTMLElement).classList.contains('dt-hidden') || (li.textContent ?? '').trim() === '')) {
+          (list as HTMLElement).classList.add('dt-hidden');
+        }
+      });
+
       // 在生成完毕后（!isStillGenerating），提取内容并做最终处理
       let hidingClarify = false;
       let hidingRouter = false;
       let hidingNextPrompt = false;
       el.querySelectorAll('p, li, span, pre, code').forEach((child) => {
         if ((child as HTMLElement).closest?.('.dt-resp-badge') || (child as HTMLElement).closest?.('.dt-react-clarify-mount')) return;
+        // 工具调用卡片内部元素跳过
+        if ((child as HTMLElement).closest?.('[data-dt-tool-card]')) return;
         const ct = (child.textContent ?? '').trim();
 
         const clarifyBoundary = parseTagBoundary(ct, CLARIFY_TAG, hidingClarify);
@@ -848,6 +1013,19 @@ export class DOMBeautifier {
         }
 
         if (hidingNextPrompt) {
+          child.classList.add('dt-hidden');
+        }
+        // 隐藏工具调用和系统内部通信标记（最终清理阶段）
+        if (/\[TOOL_CALL:/.test(ct)) {
+          child.classList.add('dt-hidden');
+        }
+        if (/\[TOOL_RESULT:/.test(ct)) {
+          child.classList.add('dt-hidden');
+        }
+        if (/\[系统内部[\s—]|\[System Internal[\s—]/.test(ct)) {
+          child.classList.add('dt-hidden');
+        }
+        if (/\[ACTION:\s*(THINK_MORE|GOAL_REACHED)\]|\[THINK_MORE\]|\[GOAL_REACHED\]/.test(ct)) {
           child.classList.add('dt-hidden');
         }
       });

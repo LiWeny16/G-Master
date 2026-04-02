@@ -2,8 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { StateStore } from '../stores/state-store';
 import { createSiteAdapter, getSiteId } from '../adapters/adapter-factory';
-import { AgentOrchestrator } from '../core/agent-orchestrator';
-import { DeepThinkEngine } from '../core/deep-think-engine';
+import { AgentLoop } from '../core/agent-loop';
 import { DOMBeautifier } from '../core/dom-beautifier';
 import { DOMObserver } from '../core/dom-observer';
 import FloatingBall from '../components/FloatingBall';
@@ -17,13 +16,13 @@ import { useDeepseekInlineToggle } from './useDeepseekInlineToggle';
 import { useGeminiEnterpriseInlineToggle } from './useGeminiEnterpriseInlineToggle';
 import { GeminiConversationBulkDeleteController } from './gemini-bulk-delete';
 import i18n from '../i18n';
+import { restoreHandle, hasRoot } from '../background/tools/local-workspace';
 
 const store = new StateStore();
 const adapter = createSiteAdapter();
 const siteId = getSiteId();
-const engine = new DeepThinkEngine(adapter, store);
+const agentLoop = new AgentLoop(adapter, store);
 const beautifier = new DOMBeautifier(adapter, store);
-const orchestrator = new AgentOrchestrator(adapter, store, engine);
 const bulkDeleteController = new GeminiConversationBulkDeleteController();
 
 /**
@@ -46,6 +45,14 @@ const ContentApp: React.FC = observer(() => {
     store.loadConfig().then(() => setConfigLoaded(true));
   }, []);
 
+  // Phase 1.5: 配置加载后，若启用了本地工作区则静默恢复上次授权的文件夹
+  useEffect(() => {
+    if (!configLoaded) return;
+    if (store.config.localFolderEnabled && !hasRoot()) {
+      restoreHandle().catch(() => { /* 静默失败，用户可手动重新授权 */ });
+    }
+  }, [configLoaded]);
+
   // 配置加载完成后才判断当前站点是否被用户关闭
   const isSiteEnabled = configLoaded
     ? (store.config.siteEnabled?.[siteId as 'gemini' | 'gemini-enterprise' | 'doubao' | 'chatgpt' | 'zhipu' | 'deepseek'] ?? true)
@@ -57,9 +64,9 @@ const ContentApp: React.FC = observer(() => {
     if (!isSiteEnabled) return;
 
     // 启动 DOM Observer
-    const domObserver = new DOMObserver(adapter, store, engine, beautifier, () => {
+    const domObserver = new DOMObserver(adapter, store, agentLoop, beautifier, () => {
       // reinject UI callback — React handles this, no-op
-    }, orchestrator);
+    });
     domObserver.start();
     observerRef.current = domObserver;
 
@@ -85,13 +92,11 @@ const ContentApp: React.FC = observer(() => {
       }
       // 拦截停止按钮
       if (adapter.isStopButton(target) && store.isAgentEnabled) {
-        // 通过 composedPath 检查是否为程序自动触发（data-dt-auto-stop），
-        // 兼容 Shadow DOM 内的按钮（closest 不穿透 shadow boundary）。
         const isAutoStop = e.composedPath?.().some(
           (el) => (el as HTMLElement)?.hasAttribute?.('data-dt-auto-stop'),
         ) ?? !!(target).closest?.('[data-dt-auto-stop]');
         if (!isAutoStop) {
-          engine.abort();
+          agentLoop.abort();
         }
       }
     };
@@ -131,7 +136,8 @@ const ContentApp: React.FC = observer(() => {
     // 防重入：如果正在注入过程中，不拦截
     if (_injecting) return;
     if (store.currentLoop > 0) return;
-    if (store.userWorkflowPhase === 'intent') return;
+    // Agent 循环运行中：禁止重复发送
+    if (store.userWorkflowPhase === 'running') return;
     // 问卷模式中：禁止用户直接发送，必须通过问卷 UI
     if (store.userWorkflowPhase === 'clarify') {
       e.preventDefault();
@@ -144,31 +150,27 @@ const ContentApp: React.FC = observer(() => {
     const effectiveMode = siteId === 'zhipu' && store.agentMode === 'auto' ? 'on' : store.agentMode;
     const isAgentEnabled = effectiveMode !== 'off';
 
-    // === Case 1: 深度思考开启 — 走 AUTO 或 ON 流程 ===
+    // === Case 1: Agent 启用 — AUTO / ON 统一入口 ===
     if (isAgentEnabled) {
       e.preventDefault();
       e.stopPropagation();
 
-      if (effectiveMode === 'auto') {
-        // AUTO 模式：beginIntentPhase 会在内部注入记忆
-        _injecting = true;
-        void orchestrator.beginIntentPhase(userText).finally(() => {
+      _injecting = true;
+      void (async () => {
+        try {
+          const promptSuffix = await agentLoop.start(userText);
+          if (!promptSuffix) return;
+          await adapter.appendTextAndSend(promptSuffix);
+        } finally {
           setTimeout(() => { _injecting = false; }, 300);
-        });
-        return;
-      }
-
-      // ON 模式：interceptFirstSend
-      const finalText = engine.interceptFirstSend(userText);
-      if (!finalText) return;
-
-      void doAppendTextAndSend(store.config.systemPromptTemplate);
+        }
+      })();
       return;
     }
 
-    // === Case 2: 深度思考关闭 — 但仍然注入记忆/系统 Prompt（如果有） ===
+    // === Case 2: Agent 关闭 — 但仍然注入记忆（如果有） ===
     const memoryText = buildMemoryInjection();
-    if (!memoryText) return; // 没有记忆则不拦截，让原生送出
+    if (!memoryText) return;
 
     e.preventDefault();
     e.stopPropagation();
@@ -190,17 +192,17 @@ const ContentApp: React.FC = observer(() => {
   };
 
   const handleAbort = () => {
-    engine.abort();
+    agentLoop.abort();
   };
 
   /** 问卷提交 */
   const handleClarifySubmit = (answers: string[]) => {
-    void orchestrator.resumeAfterClarify(answers);
+    void agentLoop.resumeAfterClarify(answers);
   };
 
   /** 跳过问卷，直接继续（携带空答案） */
   const handleClarifySkip = () => {
-    void orchestrator.resumeAfterClarify([]);
+    void agentLoop.resumeAfterClarify([]);
   };
 
   /* 工具栏内联开关：各站点各自注入，配置未加载完或站点被禁用时传 false */

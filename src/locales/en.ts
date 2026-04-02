@@ -21,6 +21,7 @@ export default {
     // Panel
     panel_tab_settings: 'Settings',
     panel_tab_about: 'About',
+    panel_tab_sudoku: 'Sudoku',
     panel_about_desc: 'Injecting deep thinking & Agent capabilities into Gemini.',
     panel_about_author: 'Author: Onion',
     panel_about_github: 'GitHub Repository',
@@ -83,6 +84,26 @@ export default {
     settings_reset_default: 'Defaults',
     settings_reset_all: 'Reset All Data',
     settings_language: 'Language',
+
+    // Workspace Tab
+    panel_tab_workspace: 'Workspace',
+    workspace_title: 'Local Workspace',
+    workspace_desc: 'Once authorized, the Agent can browse and read your project files.',
+    workspace_select_folder: 'Select Workspace Folder',
+    workspace_change_folder: 'Change Folder',
+    workspace_disconnect: 'Disconnect',
+    workspace_connected: 'Connected: {{name}}',
+    workspace_not_connected: 'No workspace connected',
+    workspace_not_supported: 'File system access not supported',
+    workspace_enable_toggle: 'Enable workspace file access',
+    workspace_file_tree: 'File Browser',
+    workspace_empty: 'Folder is empty',
+    workspace_loading: 'Loading…',
+    workspace_restore_failed: 'Auto-restore failed, please re-select folder',
+    workspace_permission_needed: 'Re-authorization needed',
+    workspace_reauthorize: 'Re-authorize',
+
+    // Site toggles
     settings_site_section: 'Active Sites',
     settings_site_gemini: 'Gemini',
     settings_site_gemini_enterprise: 'Gemini Enterprise',

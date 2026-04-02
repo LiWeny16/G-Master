@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { runInAction } from 'mobx';
 import { observer } from 'mobx-react-lite';
-import { Bot, X, Loader2, CheckCircle2, Sparkles, Settings2, Info, Pin, Trash2, Plus, ChevronDown, ChevronUp } from 'lucide-react';
+import { X, Loader2, CheckCircle2, Sparkles, Settings2, Info, Pin, Trash2, Plus, ChevronDown, ChevronUp, FolderOpen, Grid3X3 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { StateStore } from '../stores/state-store';
 import { DEFAULT_CONFIG, LoopModel } from '../types';
 import { PersistService } from '../services/persist-service';
+import WorkspaceTab from './WorkspaceTab';
+import SudokuGame from './SudokuGame';
 import {
   Alert,
   Box,
@@ -15,8 +17,6 @@ import {
   MenuItem,
   Stack,
   Switch,
-  Tab,
-  Tabs,
   TextField,
   ToggleButton,
   ToggleButtonGroup,
@@ -285,18 +285,41 @@ const MemoryCardList: React.FC<{ store: StateStore }> = observer(({ store }) => 
   );
 });
 
+/* ── 产品标志 (蓝色四棱星) ── */
+const ProductLogo: React.FC<{ size?: number }> = ({ size = 16 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M12 2L14.09 9.91L22 12L14.09 14.09L12 22L9.91 14.09L2 12L9.91 9.91L12 2Z"
+      fill="url(#gm-star-grad)" />
+    <defs>
+      <linearGradient id="gm-star-grad" x1="2" y1="2" x2="22" y2="22" gradientUnits="userSpaceOnUse">
+        <stop stopColor="#42A5F5" />
+        <stop offset="1" stopColor="#1565C0" />
+      </linearGradient>
+    </defs>
+  </svg>
+);
+
+type TabType = 'workspace' | 'settings' | 'sudoku' | 'about';
+
+const TAB_CONFIG: Array<{ value: TabType; icon: React.ReactNode; labelKey: string }> = [
+  { value: 'workspace', icon: <FolderOpen size={15} />, labelKey: 'panel_tab_workspace' },
+  { value: 'settings',  icon: <Settings2 size={15} />,  labelKey: 'panel_tab_settings'  },
+  { value: 'sudoku',    icon: <Grid3X3 size={15} />,    labelKey: 'panel_tab_sudoku'    },
+  { value: 'about',     icon: <Info size={15} />,       labelKey: 'panel_tab_about'     },
+];
+
 const Panel: React.FC<Props> = observer(({ store, open, anchorPos, allowAutoMode = true, onClose, onAbort }) => {
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState<'settings' | 'about'>('settings');
+  const [activeTab, setActiveTab] = useState<TabType>('workspace');
 
   if (!open) return null;
 
+  const panelH = Math.round(window.innerHeight * 0.8);
   const panelStyle: React.CSSProperties = {
     left: Math.min(anchorPos.x + 56, window.innerWidth - 372),
-    top: Math.max(8, Math.min(anchorPos.y - 20, window.innerHeight - 520)),
-    display: 'flex',
-    flexDirection: 'column',
-    overflow: 'scroll'
+    top: Math.max(8, Math.min(anchorPos.y - 20, window.innerHeight - panelH - 8)),
+    height: '80svh',
+    overflow: 'hidden',
   };
 
   const isActive = store.isAgentEnabled;
@@ -328,62 +351,98 @@ const Panel: React.FC<Props> = observer(({ store, open, anchorPos, allowAutoMode
 
         {/* ── 头部 ── */}
         <div className="dt-panel-header">
-          <div className="dt-panel-title" style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <Bot size={16} />
+          {/* 左：产品 Logo + 名称 */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+            <ProductLogo size={16} />
+            <span style={{ fontSize: 13, fontWeight: 700, color: '#F5F0E8', letterSpacing: '-0.01em' }}>
               G-Master
-            </div>
-            <Tabs
-              value={activeTab}
-              onChange={(_event, value: 'settings' | 'about') => setActiveTab(value)}
-              textColor="inherit"
-              indicatorColor="secondary"
-              sx={{ minHeight: 24, '& .MuiTab-root': { minHeight: 24, px: 1.2, fontSize: 12 } }}
-            >
-              <Tab value="settings" label={t('panel_tab_settings')} />
-              <Tab value="about" label={t('panel_tab_about')} />
-            </Tabs>
+            </span>
           </div>
-          <div className="dt-panel-close" onClick={onClose} role="button" tabIndex={0}>
-            <X size={16} />
+
+          {/* 中：图标式 Tab 导航 */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1, justifyContent: 'center' }}>
+            {TAB_CONFIG.map(({ value, icon, labelKey }) => {
+              const isAct = activeTab === value;
+              return (
+                <button
+                  key={value}
+                  title={t(labelKey)}
+                  onClick={() => setActiveTab(value)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: 32,
+                    height: 32,
+                    borderRadius: 8,
+                    border: 'none',
+                    background: isAct ? 'rgba(245,240,232,0.14)' : 'transparent',
+                    color: isAct ? '#F5F0E8' : 'rgba(245,240,232,0.40)',
+                    cursor: 'pointer',
+                    transition: 'background 0.15s, color 0.15s, box-shadow 0.15s',
+                    outline: 'none',
+                    boxShadow: isAct ? 'inset 0 -2px 0 rgba(139,115,85,0.85)' : 'none',
+                    flexShrink: 0,
+                  }}
+                >
+                  {icon}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* 右：关闭按钮 */}
+          <div className="dt-panel-close" onClick={onClose} role="button" tabIndex={0} style={{ flexShrink: 0 }}>
+            <X size={15} />
           </div>
         </div>
 
-        {activeTab === 'about' && (
-          <Box className="dt-panel-body" sx={{ flex: 1, p: 2.5, textAlign: 'center' }}>
-            <Info size={44} style={{ color: '#8B7355', margin: '0 auto 14px auto', display: 'block' }} />
-            <Typography variant="h6" sx={{ mb: 0.8, color: '#1a1a1a' }}>G-Master</Typography>
-            <Typography sx={{ fontSize: 13, color: '#666', mb: 2.2 }}>
-              {t('panel_about_desc')}
-            </Typography>
-            <Box sx={{ p: 2, bgcolor: '#f5f5f5', borderRadius: 2 }}>
-              <Typography sx={{ fontWeight: 700, color: '#333' }}>{t('panel_about_author')}</Typography>
-              <Typography sx={{ mt: 0.5, fontSize: 12, color: '#888' }}>from NUS MIT</Typography>
+        {/* ── 内容区（固定高度，各路由内部独立滚动）── */}
+        <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+
+          {activeTab === 'workspace' && (
+            <WorkspaceTab store={store} />
+          )}
+
+          {activeTab === 'sudoku' && (
+            <SudokuGame />
+          )}
+
+          {activeTab === 'about' && (
+            <Box className="dt-panel-body" sx={{ flex: 1, p: 2.5, textAlign: 'center', overflowY: 'auto' }}>
+              <ProductLogo size={44} />
+              <Typography variant="h6" sx={{ mb: 0.8, color: '#1a1a1a', mt: 1.5 }}>G-Master</Typography>
+              <Typography sx={{ fontSize: 13, color: '#666', mb: 2.2 }}>
+                {t('panel_about_desc')}
+              </Typography>
+              <Box sx={{ p: 2, bgcolor: '#f5f5f5', borderRadius: 2 }}>
+                <Typography sx={{ fontWeight: 700, color: '#333' }}>{t('panel_about_author')}</Typography>
+                <Typography sx={{ mt: 0.5, fontSize: 12, color: '#888' }}>from NUS MIT</Typography>
+              </Box>
+              <Button
+                component="a"
+                href="https://github.com/LiWeny16/G-Master"
+                target="_blank"
+                rel="noreferrer"
+                variant="outlined"
+                startIcon={<GitHubIcon size={16} />}
+                sx={{
+                  mt: 2,
+                  borderColor: '#d4c9b8',
+                  color: '#333',
+                  borderRadius: 999,
+                  textTransform: 'none',
+                  px: 2,
+                  '&:hover': {
+                    borderColor: '#8B7355',
+                    bgcolor: 'rgba(139,115,85,0.05)'
+                  }
+                }}
+              >
+                {t('panel_about_github')}
+              </Button>
             </Box>
-            <Button
-              component="a"
-              href="https://github.com/LiWeny16/G-Master"
-              target="_blank"
-              rel="noreferrer"
-              variant="outlined"
-              startIcon={<GitHubIcon size={16} />}
-              sx={{
-                mt: 2,
-                borderColor: '#d4c9b8',
-                color: '#333',
-                borderRadius: 999,
-                textTransform: 'none',
-                px: 2,
-                '&:hover': {
-                  borderColor: '#8B7355',
-                  bgcolor: 'rgba(139,115,85,0.05)'
-                }
-              }}
-            >
-              {t('panel_about_github')}
-            </Button>
-          </Box>
-        )}
+          )}
 
         {activeTab === 'settings' && (
           <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, overflowY: 'auto' }}>
@@ -447,38 +506,6 @@ const Panel: React.FC<Props> = observer(({ store, open, anchorPos, allowAutoMode
                   {t('settings_tavily_warn')}
                 </Alert>
               )}
-
-              {/* 未来再上架
-              <FormControlLabel
-                control={(
-                  <Switch
-                    checked={store.config.localFolderEnabled}
-                    onChange={(e) => store.updateConfig({ localFolderEnabled: e.target.checked })}
-                  />
-                )}
-                label="文件夹读取开关"
-              />
-              {store.config.localFolderEnabled && (
-                <Box sx={{ ml: 3, mt: 0.5 }}>
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    onClick={() => {
-                      if (window.confirm("由于安全限制，需在插件的全页设置中进行文件夹授权。点击确定前往设置页面。")) {
-                        chrome.runtime.sendMessage({ type: 'OPEN_OPTIONS_PAGE' }).catch(() => {
-                          alert("跳转失败，请手动在扩展图标右键选择“选项”打开设置页。");
-                        });
-                      }
-                    }}
-                  >
-                    前往授权工作区文件夹
-                  </Button>
-                  <Typography sx={{ fontSize: 11, color: '#666', mt: 0.6 }}>
-                    授予本地读取权限以供Agent分析文件
-                  </Typography>
-                </Box>
-              )}
-              */}
 
               <Divider sx={{ my: 0.8 }} />
               <Typography className="dt-section-label" sx={{ mt: 0.6 }}>
@@ -594,6 +621,8 @@ const Panel: React.FC<Props> = observer(({ store, open, anchorPos, allowAutoMode
             </Stack>
           </Box>
         )}
+
+        </div>{/* ── 内容区结束 ── */}
       </div>
     </ThemeProvider>
   );
