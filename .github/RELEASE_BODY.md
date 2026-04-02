@@ -1,41 +1,43 @@
-## ✨ v1.2.0 — Multi-Site Support & Per-Site Toggle
+## ✨ v1.3.1 — Workspace Tools Upgrade & File Attachment
 
-### 🆕 What's New | 新功能
+### 🆕 Highlights | 重点更新
 
-#### 🌐 Multi-Site Support | 多站点支持
-- **ChatGPT** (`chatgpt.com`) and **Doubao / 豆包** (`doubao.com`) are now fully supported alongside Gemini.  
-  在 Gemini 的基础上，正式支持 **ChatGPT** 和**豆包**，深度思考与 Agent 能力可跨站点使用。
+#### 📁 Smarter Workspace Search | 更智能的工作区搜索
+- `search_files` now supports two modes automatically:
+  smart keyword search and classic glob matching.
+  `search_files` 现已支持自动双模式：智能关键词检索 + 传统 glob 匹配。
+- Smart mode supports multi-term AND matching, separator tolerance (`-`, `_`, `.`),
+  case-insensitive ranking, and filenames with spaces.
+  智能模式支持多关键词 AND、分隔符容错（`-`、`_`、`.`）、忽略大小写排序，并兼容带空格文件名。
+- Glob mode remains backward compatible (`*.ts`, `src/**/*.ts`, etc.).
+  Glob 模式完全向后兼容（如 `*.ts`、`src/**/*.ts`）。
 
-#### 🔘 Per-Site Enable/Disable Toggle | 网站开关
-- A new **"Active Sites"** section appears at the top of the Settings panel.  
-  设置面板顶部新增「**启用网站**」区域。
-- Toggle Gemini / Doubao / ChatGPT individually with branded pill buttons — active sites are highlighted.  
-  通过带品牌图标的胶囊按钮，可单独控制每个网站的插件开关，已启用的站点高亮显示。
-- Preference is persisted to `chrome.storage.local` and survives browser restarts.  
-  开关状态持久化到 `chrome.storage.local`，重启浏览器后保留。
+#### 📎 File-to-Chat Attachment | 文件直接粘贴到聊天输入框
+- Added `attach_file_to_chat` local tool: attach workspace files directly to AI web input via paste event.
+  新增 `attach_file_to_chat` 本地工具：通过粘贴事件将工作区文件直接附加到 AI 网页输入框。
+- Supports broad binary upload scenarios (images / PDF / docs / media / archives),
+  and works with custom `targetSelector`.
+  支持广泛二进制文件上传场景（图片 / PDF / 文档 / 媒体 / 压缩包），并支持自定义 `targetSelector`。
 
-#### 🏗️ Adapter Architecture | 适配器架构
-- Introduced a clean `ISiteAdapter` interface + factory pattern (`adapter-factory.ts`).  
-  引入统一的 `ISiteAdapter` 接口与工厂模式，新增站点只需实现接口即可接入。
-- Independent adapters: `GeminiAdapter`, `ChatGPTAdapter`, `DoubaoAdapter`.  
-  各站点独立适配器，互不干扰。
-
----
-
-### 🔧 Improvements | 改进
-
-- Settings UI now uses **Google brand-color SVG** icon for Gemini entry.  
-  设置界面 Gemini 按钮换用 Google 官方四色品牌 SVG 图标。
-- `ContentApp` early-returns when the current site's toggle is off — zero performance cost on disabled sites.  
-  关闭某站点开关后，`ContentApp` 直接跳过渲染，完全不注入 UI，性能开销为零。
+#### 🔁 Better Workspace Restore UX | 工作区恢复体验优化
+- Restores previously authorized workspace handle earlier during app initialization,
+  reducing the need to manually open the Workspace tab first.
+  在应用初始化阶段更早恢复已授权工作区句柄，减少必须先手动打开工作区页签的问题。
 
 ---
 
-### 📦 Technical | 技术细节
+### 🛠️ Tooling & Prompt Updates | 工具与提示词更新
 
-- `DeepThinkConfig.siteEnabled` field added (defaults: all enabled).  
-  `DeepThinkConfig` 新增 `siteEnabled` 字段，默认全部启用。
-- `StateStore.loadConfig` deep-merges `siteEnabled` from saved config.  
-  `StateStore.loadConfig` 正确深度合并历史存档中的 `siteEnabled`。
-- i18n keys added: `settings_site_section`, `settings_site_gemini`, `settings_site_doubao`, `settings_site_chatgpt`.  
-  中英文 i18n 翻译键已同步更新。
+- Local tool registry now includes `grep_files` and `attach_file_to_chat`.
+  本地工具注册新增 `grep_files` 与 `attach_file_to_chat`。
+- `read_file` supports optional line-range reads (`startLine` / `endLine`).
+  `read_file` 支持按行范围读取（`startLine` / `endLine`）。
+- Skills prompt docs were updated in both Chinese and English for the new capabilities.
+  中英文 skills 提示词已同步更新，覆盖新工具能力与使用方式。
+
+---
+
+### 📦 Release Asset | 发布产物
+
+- `G-Master-v1.3.1.zip` is generated and uploaded automatically by GitHub Actions.
+  `G-Master-v1.3.1.zip` 由 GitHub Actions 自动构建并上传到 Release 资产。
