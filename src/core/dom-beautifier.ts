@@ -493,6 +493,20 @@ export class DOMBeautifier {
         // else: hasUserContent 保持 false → 下方会隐藏气泡
       }
 
+      // Gemini Enterprise 专用路径：气泡元素在 shadow root 内，文本在 :scope > div > div
+      const isEnterpriseEl = el.getRootNode() instanceof ShadowRoot;
+      const enterpriseBubble = isEnterpriseEl
+        ? el.querySelector<HTMLElement>(':scope > div > div')
+        : null;
+      if (enterpriseBubble && lines.length === 0 && !textBubble && !chatgptBubble && !deepseekBubble) {
+        const userText = this.extractChatGPTUserText(fullText);
+        if (userText !== null) {
+          enterpriseBubble.textContent = userText;
+          hasUserContent = true;
+        }
+        // else: hasUserContent 保持 false → 下方会隐藏气泡
+      }
+
       if (!hasUserContent) {
         lines.forEach((l) => l.classList.add('dt-hidden'));
         const bubble = el.closest('.user-query-bubble-with-background');
@@ -504,6 +518,8 @@ export class DOMBeautifier {
         if (chatgptBubble) chatgptBubble.style.display = 'none';
         // DeepSeek：直接隐藏纯系统注入气泡
         if (deepseekBubble) deepseekBubble.style.display = 'none';
+        // Gemini Enterprise：直接隐藏纯系统注入气泡
+        if (enterpriseBubble) enterpriseBubble.style.display = 'none';
       }
 
       // 移除旧标签容器，避免重复追加

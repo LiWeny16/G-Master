@@ -8,6 +8,7 @@ export class DOMObserver {
   private observer: MutationObserver | null = null;
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private intentHandoffInProgress = false;
+  private observedExtraTargets = new WeakSet<Node>();
 
   // Watchdog variables
   private watchdogTimer: ReturnType<typeof setInterval> | null = null;
@@ -28,12 +29,34 @@ export class DOMObserver {
 
   start(): void {
     const { target, options } = this.adapter.getObserverConfig();
-    this.observer = new MutationObserver((mutations) => this.handleMutations(mutations));
+    this.observer = new MutationObserver((mutations) => {
+      this.handleMutations(mutations);
+      // 每次有 mutation 时尝试补登记尚未就绪的额外目标（shadow root 可能还未就绪）
+      this.tryRegisterExtraTargets(options);
+    });
     this.observer.observe(target, options);
+    // 立即尝试一次
+    this.tryRegisterExtraTargets(options);
+    // 延迟再尝试，应对 shadow root 延迟初始化
+    setTimeout(() => this.tryRegisterExtraTargets(options), 1500);
 
     // Watchdog is temporarily disabled to avoid timeout-based forced stop.
     if (this.WATCHDOG_ENABLED) {
       this.watchdogTimer = setInterval(() => this.checkStagnation(), 2000);
+    }
+  }
+
+  /** 尝试将适配器提供的额外 shadow root 节点加入 MutationObserver */
+  private tryRegisterExtraTargets(options: MutationObserverInit): void {
+    if (!this.observer) return;
+    const extras = this.adapter.extraObserverTargets?.() ?? [];
+    for (const extra of extras) {
+      if (!this.observedExtraTargets.has(extra)) {
+        try {
+          this.observer.observe(extra, options);
+          this.observedExtraTargets.add(extra);
+        } catch (_e) { /* shadow root 可能尚未就绪 */ }
+      }
     }
   }
 
@@ -44,6 +67,7 @@ export class DOMObserver {
     }
     this.observer?.disconnect();
     this.observer = null;
+    this.observedExtraTargets = new WeakSet<Node>();
   }
 
   private checkStagnation(): void {

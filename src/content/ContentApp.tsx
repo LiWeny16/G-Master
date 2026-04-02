@@ -14,6 +14,7 @@ import { useDoubaoInlineToggle } from './useDoubaoInlineToggle';
 import { useChatGPTInlineToggle } from './useChatGPTInlineToggle';
 import { useZhipuInlineToggle } from './useZhipuInlineToggle';
 import { useDeepseekInlineToggle } from './useDeepseekInlineToggle';
+import { useGeminiEnterpriseInlineToggle } from './useGeminiEnterpriseInlineToggle';
 import { GeminiConversationBulkDeleteController } from './gemini-bulk-delete';
 import i18n from '../i18n';
 
@@ -47,7 +48,7 @@ const ContentApp: React.FC = observer(() => {
 
   // 配置加载完成后才判断当前站点是否被用户关闭
   const isSiteEnabled = configLoaded
-    ? (store.config.siteEnabled?.[siteId as 'gemini' | 'doubao' | 'chatgpt' | 'zhipu' | 'deepseek'] ?? true)
+    ? (store.config.siteEnabled?.[siteId as 'gemini' | 'gemini-enterprise' | 'doubao' | 'chatgpt' | 'zhipu' | 'deepseek'] ?? true)
     : false;
 
   // Phase 2: 仅在站点启用时才挂载 DOM Observer + 键盘/点击事件
@@ -63,7 +64,7 @@ const ContentApp: React.FC = observer(() => {
     observerRef.current = domObserver;
 
     // 对话侧边栏多选批量删除增强（仅 Gemini）
-    if (siteId === 'gemini') {
+    if (siteId === 'gemini' || siteId === 'gemini-enterprise') {
       bulkDeleteController.start();
     }
 
@@ -76,15 +77,19 @@ const ContentApp: React.FC = observer(() => {
 
     // 拦截发送按钮点击
     const handleClick = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
+      // composedPath()[0] 是事件的真实最深来源元素，能穿透 Shadow DOM 边界；
+      // e.target 在 shadow boundary 处会被 retarget 为 shadow host，无法用于判断内部按钮。
+      const target = (e.composedPath?.()[0] ?? e.target) as HTMLElement;
       if (adapter.isSendButton(target)) {
         handleInterceptSend(e);
       }
       // 拦截停止按钮
       if (adapter.isStopButton(target) && store.isAgentEnabled) {
-        // 兼容 button（ChatGPT/豆包）和 div（Kimi）两种停止容器：
-        // 找到携带 data-dt-auto-stop 的最近祖先元素来判断是否为程序自动触发。
-        const isAutoStop = !!(target as HTMLElement).closest?.('[data-dt-auto-stop]');
+        // 通过 composedPath 检查是否为程序自动触发（data-dt-auto-stop），
+        // 兼容 Shadow DOM 内的按钮（closest 不穿透 shadow boundary）。
+        const isAutoStop = e.composedPath?.().some(
+          (el) => (el as HTMLElement)?.hasAttribute?.('data-dt-auto-stop'),
+        ) ?? !!(target).closest?.('[data-dt-auto-stop]');
         if (!isAutoStop) {
           engine.abort();
         }
@@ -97,7 +102,7 @@ const ContentApp: React.FC = observer(() => {
     return () => {
       document.removeEventListener('keydown', handleKeydown, true);
       document.removeEventListener('click', handleClick, true);
-      if (siteId === 'gemini') {
+      if (siteId === 'gemini' || siteId === 'gemini-enterprise') {
         bulkDeleteController.stop();
       }
       domObserver.stop();
@@ -200,6 +205,7 @@ const ContentApp: React.FC = observer(() => {
 
   /* 工具栏内联开关：各站点各自注入，配置未加载完或站点被禁用时传 false */
   useInlineToggle(store, handleToggleEngine, handleAbort, isSiteEnabled && siteId === 'gemini');
+  useGeminiEnterpriseInlineToggle(store, handleToggleEngine, handleAbort, isSiteEnabled && siteId === 'gemini-enterprise');
   useDoubaoInlineToggle(store, handleToggleEngine, handleAbort, isSiteEnabled && siteId === 'doubao');
   useChatGPTInlineToggle(store, handleToggleEngine, handleAbort, isSiteEnabled && siteId === 'chatgpt');
   useZhipuInlineToggle(store, handleToggleEngine, handleAbort, isSiteEnabled && siteId === 'zhipu');

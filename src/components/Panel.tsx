@@ -113,6 +113,12 @@ const NumField: React.FC<{
   </Box>
 );
 
+const GitHubIcon: React.FC<{ size?: number }> = ({ size = 16 }) => (
+  <svg viewBox="0 0 24 24" width={size} height={size} fill="currentColor" aria-hidden="true">
+    <path d="M12 .5C5.649.5.5 5.649.5 12A11.5 11.5 0 0 0 8.36 22.92c.575.106.785-.25.785-.556 0-.274-.01-1-.016-1.962-3.198.695-3.873-1.542-3.873-1.542-.523-1.328-1.277-1.681-1.277-1.681-1.044-.714.08-.699.08-.699 1.154.081 1.761 1.185 1.761 1.185 1.026 1.758 2.692 1.25 3.348.956.104-.743.402-1.25.731-1.537-2.553-.29-5.238-1.277-5.238-5.683 0-1.255.449-2.281 1.184-3.085-.119-.29-.513-1.457.112-3.038 0 0 .965-.309 3.162 1.178A10.98 10.98 0 0 1 12 6.032c.972.005 1.95.132 2.864.388 2.195-1.487 3.159-1.178 3.159-1.178.627 1.581.233 2.748.114 3.038.738.804 1.183 1.83 1.183 3.085 0 4.417-2.689 5.389-5.252 5.673.413.356.781 1.059.781 2.135 0 1.541-.014 2.784-.014 3.164 0 .309.207.668.79.555A11.502 11.502 0 0 0 23.5 12C23.5 5.649 18.351.5 12 .5Z" />
+  </svg>
+);
+
 /* ── 核心记忆卡片列表 (MemoryCardList) ── */
 const MemoryCardList: React.FC<{ store: StateStore }> = observer(({ store }) => {
   const { t } = useTranslation();
@@ -354,6 +360,28 @@ const Panel: React.FC<Props> = observer(({ store, open, anchorPos, allowAutoMode
               <Typography sx={{ fontWeight: 700, color: '#333' }}>{t('panel_about_author')}</Typography>
               <Typography sx={{ mt: 0.5, fontSize: 12, color: '#888' }}>from NUS MIT</Typography>
             </Box>
+            <Button
+              component="a"
+              href="https://github.com/LiWeny16/G-Master"
+              target="_blank"
+              rel="noreferrer"
+              variant="outlined"
+              startIcon={<GitHubIcon size={16} />}
+              sx={{
+                mt: 2,
+                borderColor: '#d4c9b8',
+                color: '#333',
+                borderRadius: 999,
+                textTransform: 'none',
+                px: 2,
+                '&:hover': {
+                  borderColor: '#8B7355',
+                  bgcolor: 'rgba(139,115,85,0.05)'
+                }
+              }}
+            >
+              {t('panel_about_github')}
+            </Button>
           </Box>
         )}
 

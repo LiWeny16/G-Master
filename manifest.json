@@ -33,6 +33,7 @@
         "https://gemini.google.com/*",
         "https://gemini.google.com/app*",
         "https://gemini.google.com/u/*/app*",
+        "https://vertexaisearch.cloud.google.com/*",
         "https://www.doubao.com/chat/*",
         "https://www.doubao.com/chat",
         "https://chatgpt.com/*",

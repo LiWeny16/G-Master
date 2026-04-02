@@ -265,6 +265,18 @@ body {
   color: var(--dt-cream);
 }
 
+/* WIP 站点按钮：占位显示，不可交互 */
+.sp-site-btn--wip {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.sp-site-btn--wip:hover {
+  background: var(--dt-beige);
+  color: var(--dt-muted);
+  border-color: var(--dt-sand);
+  box-shadow: none;
+}
+
 .sp-site-btn-icon {
   display: flex;
   align-items: center;

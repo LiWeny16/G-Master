@@ -1,5 +1,6 @@
 import { ISiteAdapter } from './site-adapter';
 import { GeminiAdapter } from './gemini-adapter';
+import { GeminiEnterpriseAdapter } from './gemini-enterprise-adapter';
 import { DoubaoAdapter } from './doubao-adapter';
 import { ChatGPTAdapter } from './chatgpt-adapter';
 import { ZhipuAdapter } from './zhipu-adapter';
@@ -9,7 +10,7 @@ import { DeepSeekAdapter } from './deepseek-adapter';
  * 当前扩展支持的站点标识。
  * 新增站点时，在这里添加字面量并创建对应 Adapter。
  */
-export type SiteId = 'gemini' | 'doubao' | 'chatgpt' | 'zhipu' | 'deepseek' | 'unknown';
+export type SiteId = 'gemini' | 'gemini-enterprise' | 'doubao' | 'chatgpt' | 'zhipu' | 'deepseek' | 'unknown';
 
 /**
  * 根据 hostname 返回站点标识。
@@ -30,6 +31,7 @@ export type SiteId = 'gemini' | 'doubao' | 'chatgpt' | 'zhipu' | 'deepseek' | 'u
 export function getSiteId(): SiteId {
   const hostname = window.location.hostname;
   if (hostname === 'gemini.google.com') return 'gemini';
+  if (hostname === 'vertexaisearch.cloud.google.com') return 'gemini-enterprise';
   if (hostname === 'www.doubao.com') return 'doubao';
   if (hostname === 'chatgpt.com') return 'chatgpt';
   if (hostname === 'chat.z.ai') return 'zhipu';
@@ -47,6 +49,8 @@ export function createSiteAdapter(): ISiteAdapter {
   switch (site) {
     case 'gemini':
       return new GeminiAdapter();
+    case 'gemini-enterprise':
+      return new GeminiEnterpriseAdapter();
     case 'doubao':
       return new DoubaoAdapter();
     case 'chatgpt':

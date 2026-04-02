@@ -44,4 +44,11 @@ export interface ISiteAdapter {
    * 调用方勿假设 DOM 会瞬时完成更新。
    */
   switchGeminiModel?(model: GeminiModelId): Promise<void>;
+
+  /**
+   * 返回需要额外注册 MutationObserver 的节点列表（通常是 Shadow Root）。
+   * 用于穿透 Shadow DOM 边界监听内部 DOM 变化（如 send-button class 变化）。
+   * 可选，不实现时默认仅观察 getObserverConfig() 的 target。
+   */
+  extraObserverTargets?(): Node[];
 }

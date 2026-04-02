@@ -2,6 +2,18 @@
 // 数据模型与类型定义 / Data Models & Type Definitions
 // ==========================================
 
+import {
+  SiteKey,
+  SITE_DEFAULTS,
+  DEFAULT_MAX_LOOPS,
+  DEFAULT_MIN_LOOPS,
+  DEFAULT_LOOP_DELAY,
+  DEFAULT_MAX_TOOL_ROUNDS,
+  DEFAULT_LOOP_MODEL,
+} from '../config/config';
+
+export type { SiteKey };
+
 export type AgentMode = 'off' | 'on' | 'auto';
 export type LoopModel = 'fast' | 'think' | 'pro';
 export type UserWorkflowPhase = 'none' | 'intent' | 'deep' | 'clarify';
@@ -42,7 +54,7 @@ export interface DeepThinkConfig {
   /** 重要的 System Prompt 记忆和固定设置 / Pinned Memories and fixed System Prompts */
   pinnedMemories?: { id: string; content: string; enabled: boolean; title: string }[];
   /** 每个支持网站的插件启用开关 / Per-site plugin enable switch */
-  siteEnabled?: Partial<Record<'gemini' | 'doubao' | 'chatgpt' | 'zhipu' | 'deepseek', boolean>>;
+  siteEnabled?: Partial<Record<SiteKey, boolean>>;
 }
 
 export type EnginePhase = 'idle' | 'waiting' | 'thinking' | 'summarizing' | 'clarifying';
@@ -110,18 +122,18 @@ Strictly adhere.`;
 const systemLang: 'zh' | 'en' = (typeof navigator !== 'undefined' && navigator.language && navigator.language.toLowerCase().startsWith('en')) ? 'en' : 'zh';
 
 export const DEFAULT_CONFIG: DeepThinkConfig = {
-  maxLoops: 3,
-  minLoops: 1,
-  loopDelay: 1500,
-  loopModel: 'pro',
+  maxLoops: DEFAULT_MAX_LOOPS,
+  minLoops: DEFAULT_MIN_LOOPS,
+  loopDelay: DEFAULT_LOOP_DELAY,
+  loopModel: DEFAULT_LOOP_MODEL,
   reviewPhases: getReviewPhases(systemLang),
   systemPromptTemplate: getSystemPromptTemplate(systemLang, DEFAULT_MARKERS),
   markers: { ...DEFAULT_MARKERS },
   tavilyApiKey: '',
   tavilyEnabled: false,
   localFolderEnabled: false,
-  maxToolRoundsPerTurn: 8,
+  maxToolRoundsPerTurn: DEFAULT_MAX_TOOL_ROUNDS,
   language: systemLang,
   pinnedMemories: [],
-  siteEnabled: { gemini: true, doubao: true, chatgpt: true, zhipu: true, deepseek: true },
+  siteEnabled: { ...SITE_DEFAULTS },
 };
