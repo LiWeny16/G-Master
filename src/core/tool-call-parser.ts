@@ -49,8 +49,65 @@ function parseArgObjectString(inner: string): Record<string, unknown> {
     if (v !== null && typeof v === 'object' && !Array.isArray(v)) return v as Record<string, unknown>;
     return { value: v as unknown };
   } catch {
+    // LLM 常输出非严格 JSON（未转义换行、引号等），尝试容错修复
+    try {
+      const fixed = tryFixLlmJson(trimmed);
+      const v2: unknown = JSON.parse(fixed);
+      if (v2 !== null && typeof v2 === 'object' && !Array.isArray(v2)) return v2 as Record<string, unknown>;
+    } catch { /* 二次修复也失败 */ }
     return { raw: trimmed };
   }
+}
+
+/**
+ * 尝试修复 LLM 输出的非严格 JSON：
+ * - 字符串值内的未转义换行符 → \\n
+ * - 字符串值内的未转义制表符 → \\t
+ * - 字符串值内的未转义双引号（启发式）
+ */
+function tryFixLlmJson(raw: string): string {
+  // 策略：逐字符扫描，在字符串值区间内将裸控制字符转义
+  let result = '';
+  let inString = false;
+  let escape = false;
+  for (let i = 0; i < raw.length; i++) {
+    const c = raw[i];
+    if (escape) {
+      result += c;
+      escape = false;
+      continue;
+    }
+    if (c === '\\' && inString) {
+      escape = true;
+      result += c;
+      continue;
+    }
+    if (c === '"') {
+      if (!inString) {
+        inString = true;
+        result += c;
+      } else {
+        // 检查这个引号是否真的是字符串终结符
+        // 启发式：后面紧跟 , } ] : 或行尾 → 视为字符串终止
+        const after = raw.slice(i + 1).trimStart();
+        if (after.length === 0 || /^[,}\]:]/.test(after)) {
+          inString = false;
+          result += c;
+        } else {
+          // 值内的未转义引号
+          result += '\\"';
+        }
+      }
+      continue;
+    }
+    if (inString) {
+      if (c === '\n') { result += '\\n'; continue; }
+      if (c === '\r') { result += '\\r'; continue; }
+      if (c === '\t') { result += '\\t'; continue; }
+    }
+    result += c;
+  }
+  return result;
 }
 
 /**

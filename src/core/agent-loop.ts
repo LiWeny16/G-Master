@@ -16,14 +16,19 @@ import { runInAction } from 'mobx';
 import type { GeminiModelId, ISiteAdapter } from '../adapters/site-adapter';
 import { invokeBackground } from '../services/message-bus';
 import { StateStore } from '../stores/state-store';
-import type { ClarifyQuestion, ParsedMarkers } from '../types';
+import type { ClarifyQuestion, ParsedMarkers, PendingFileOp, FileOpType } from '../types';
 import { parseToolCalls } from './tool-call-parser';
 import { parseClarifyBlock, extractTaggedPayload, NEXT_PROMPT_TAG } from './parsers';
 import { isLocalFileTool, executeLocalTool } from '../background/tools/tool-registry';
-import { hasRoot as hasWorkspaceRoot } from '../background/tools/local-workspace';
+import { hasRoot as hasWorkspaceRoot, fileExists } from '../background/tools/local-workspace';
 import { allSkills, buildToolsSystemPrompt } from '../skills/index';
+import { saveEdit } from '../background/tools/edit-history';
+import type { FileEdit } from '../types';
 
 export class AgentLoop {
+  /** 文件操作审批 Promise resolver 映射 */
+  private fileOpResolvers = new Map<string, (approved: boolean) => void>();
+
   constructor(
     private adapter: ISiteAdapter,
     private store: StateStore,
@@ -51,6 +56,7 @@ export class AgentLoop {
       this.store.toolCallRoundsThisSession = 0;
       this.store.clarifyRoundsThisSession = 0;
       this.store.clarifyQuestions = [];
+      this.store.newEditSession();
     });
 
     // AUTO → FLASH 快速评估/工具调用；ON → 直接 Loop 模型深度思考
@@ -250,7 +256,55 @@ export class AgentLoop {
 
       try {
         if (isLocalFileTool(tc.name)) {
+          // ── edit_file 已硬性禁用 ──
+          if (tc.name === 'edit_file') {
+            lines.push(`[TOOL_RESULT: ${tc.name}]\n{"error":"不支持编辑已有文件。请改用 create_file 创建新文件，或使用 rename_file/move_file 重命名和移动文件。"}`);
+            continue;
+          }
+
+          // ── 写操作需要用户审批 ──
+          const WRITE_OPS = new Set(['create_file', 'write_local_file', 'rename_file', 'move_file', 'delete_file', 'create_directory', 'batch_rename']);
+          if (WRITE_OPS.has(tc.name)) {
+            // create_file: 不允许覆盖已存在文件
+            if ((tc.name === 'create_file' || tc.name === 'write_local_file') && typeof tc.args.path === 'string') {
+              const exists = await fileExists(tc.args.path);
+              if (exists) {
+                lines.push(`[TOOL_RESULT: ${tc.name}]\n{"error":"文件已存在，禁止覆盖已有文件（${tc.args.path}）。只能创建全新的文件。"}`);
+                continue;
+              }
+            }
+            // 等待用户审批
+            const approved = await this.awaitFileOpApproval(tc.name, tc.args);
+            if (!approved) {
+              lines.push(`[TOOL_RESULT: ${tc.name}]\n{"error":"用户拒绝了此操作"}`);
+              continue;
+            }
+          }
+
           const result = await executeLocalTool(tc.name, tc.args);
+          // 对 create_file / write_local_file 保存编辑历史（新建文件 diff：空 → 新内容）
+          if ((tc.name === 'create_file' || tc.name === 'write_local_file') && result && typeof result === 'object') {
+            const path = typeof tc.args.path === 'string' ? tc.args.path : '';
+            const content = typeof tc.args.content === 'string' ? tc.args.content : '';
+            if (content) {
+              const { generateUnifiedDiff } = await import('../background/tools/diff-engine');
+              const diff = generateUnifiedDiff(path, '', content);
+              const fileEdit: FileEdit = {
+                sessionId: this.store.editSessionId,
+                path,
+                originalContent: '',
+                newContent: content,
+                diff,
+                timestamp: Date.now(),
+                status: 'applied',
+              };
+              try {
+                const editId = await saveEdit(fileEdit);
+                fileEdit.id = editId;
+                runInAction(() => { this.store.addPendingEdit(fileEdit); });
+              } catch { /* 历史保存失败不阻断工具链 */ }
+            }
+          }
           lines.push(`[TOOL_RESULT: ${tc.name}]\n${JSON.stringify(result)}`);
         } else {
           const res = await invokeBackground({
@@ -279,20 +333,22 @@ export class AgentLoop {
       ? '[System Internal — Tool Execution Results]\n' +
         'The host has executed your tool calls. Results are below.\n\n' +
         'IMPORTANT: You are currently the fast/lightweight model handling the information-gathering phase.\n' +
+        'You MUST NOT generate lengthy code, write comprehensive answers, or produce creative content. That is the advanced model\'s job.\n' +
         'After reviewing these results, you MUST choose exactly ONE of these actions:\n' +
         `1. Need more information → Output additional [TOOL_CALL: ...] to gather it. Nothing else.\n` +
-        `2. All information gathered, question needs analysis/depth → Output ${markers.continueMarker} at the end, followed by [NEXT_PROMPT]\n[brief summary of all gathered info + analysis direction]\n[NEXT_PROMPT]. The system will switch to a more powerful model for deep analysis and final answer.\n` +
+        `2. Information gathered OR task requires code generation/file editing/analysis → Output ${markers.continueMarker} at the end, followed by [NEXT_PROMPT]\n[brief summary of gathered info + what the user needs]\n[NEXT_PROMPT]. The system will switch to the advanced model.\n` +
         `3. Trivially simple factual lookup (e.g. "what version?", "does file X exist?") → Output your brief answer followed by ${markers.finishMarker}.\n\n` +
-        'For any question that requires explanation, analysis, or depth: choose option 2. Do NOT attempt to write a comprehensive answer yourself — let the advanced model handle it.\n' +
+        'CRITICAL: If the user asked to edit, create, optimize, or modify files/code, you MUST choose option 2 to hand off to the advanced model. Do NOT attempt code generation yourself.\n' +
         'Reminder: Do NOT reproduce [TOOL_CALL: ...] as examples or illustrations. Only output it for genuine tool invocations.\n\n'
       : '[系统内部 — 工具执行结果]\n' +
         '宿主已执行你的工具调用，结果如下。\n\n' +
         '重要：你当前是快速/轻量模型，负责信息收集阶段。\n' +
+        '你绝不能生成大段代码、撰写全面的回答或创作内容，那是高级模型的工作。\n' +
         '审查这些结果后，你必须选择以下动作之一：\n' +
         `1. 还需要更多信息 → 继续输出 [TOOL_CALL: ...] 获取，不要输出其他内容。\n` +
-        `2. 信息已收集完毕，问题需要分析/深度思考 → 在末尾输出 ${markers.continueMarker}，然后附上 [NEXT_PROMPT]\n[已收集信息的简要摘要及分析方向]\n[NEXT_PROMPT]。系统将切换到更强大的模型进行深度分析和最终回答。\n` +
+        `2. 信息已收集完毕，或任务需要代码生成/文件编辑/深度分析 → 在末尾输出 ${markers.continueMarker}，然后附上 [NEXT_PROMPT]\n[已收集信息的摘要 + 用户需要什么]\n[NEXT_PROMPT]。系统将切换到高级模型。\n` +
         `3. 极其简单的事实查询（如"版本号是多少？""文件X是否存在？"）→ 输出简短回答并附上 ${markers.finishMarker}。\n\n` +
-        '只要问题需要解释、分析或深度，就选择选项 2。不要尝试自己撰写深度回答——交给高级模型处理。\n' +
+        '关键规则：如果用户要求编辑、创建、优化或修改文件/代码，你必须选择选项 2 交给高级模型处理。绝不要自己尝试生成代码。\n' +
         '提醒：不要将 [TOOL_CALL: ...] 作为示例输出，仅在真正需要调用时使用。\n\n';
 
     await this.sendPrompt(prefix + lines.join('\n\n'), this.isEn() ? 'File Context' : '补充文件内容');
@@ -359,6 +415,45 @@ export class AgentLoop {
   }
 
   // =============================================
+  // 文件操作审批（暂停 Agent 循环，等待用户确认）
+  // =============================================
+
+  /**
+   * 向用户展示审批弹窗，等待用户批准或拒绝。
+   * 内部使用 Promise + resolver 映射，供 UI 调用 resolveFileOp 来 resolve。
+   */
+  private awaitFileOpApproval(
+    toolName: string,
+    args: Record<string, unknown>,
+  ): Promise<boolean> {
+    const opId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const op: PendingFileOp = {
+      id: opId,
+      type: toolName as FileOpType,
+      args,
+      timestamp: Date.now(),
+    };
+    return new Promise<boolean>((resolve) => {
+      this.fileOpResolvers.set(opId, resolve);
+      runInAction(() => {
+        this.store.addPendingFileOp(op);
+        this.store.userWorkflowPhase = 'awaiting_file_op';
+      });
+    });
+  }
+
+  /**
+   * UI 调用：用户批准或拒绝一个待审批文件操作。
+   */
+  resolveFileOp(opId: string, approved: boolean): void {
+    const resolver = this.fileOpResolvers.get(opId);
+    if (!resolver) return;
+    this.fileOpResolvers.delete(opId);
+    runInAction(() => { this.store.removePendingFileOp(opId); });
+    resolver(approved);
+  }
+
+  // =============================================
   // 终止与总结
   // =============================================
 
@@ -377,6 +472,12 @@ export class AgentLoop {
 
   abort(): void {
     runInAction(() => { this.store.userAborted = true; });
+    // 拒绝所有等待审批的文件操作
+    for (const [, resolver] of this.fileOpResolvers) {
+      resolver(false);
+    }
+    this.fileOpResolvers.clear();
+    runInAction(() => { this.store.pendingFileOps = []; });
     this.store.resetState();
   }
 
@@ -497,15 +598,13 @@ export class AgentLoop {
         `The information-gathering phase (tool calls) is complete. You are now running as the ADVANCED model.\n` +
         `All tool results from previous rounds are available in the conversation history above.\n\n` +
         `Original question: "${this.store.originalQuestion}"\n\n` +
-        `Please provide a thorough, well-structured answer based on ALL gathered information.\n` +
-        `This is your response to the user — it will be shown directly to them.\n` +
-        `Requirements:\n` +
-        `- Synthesize all tool results into a coherent, comprehensive answer\n` +
-        `- Use clear structure (headings, lists, tables) as appropriate\n` +
-        `- Cite sources where applicable\n` +
-        `- If you need even deeper analysis, you may output ${markers.continueMarker} + [NEXT_PROMPT]\\n[direction]\\n[NEXT_PROMPT]\n` +
-        `- Do NOT output [TOOL_CALL: ...] — the gathering phase is over\n` +
-        `- When fully satisfied with your answer, end naturally or output ${markers.finishMarker}`
+        `Your task:\n` +
+        `- If the user asked to edit/optimize/create code or files → Use [TOOL_CALL: edit_file(...)] or [TOOL_CALL: create_file(...)] to EXECUTE the changes directly. Do NOT just describe what to change — actually do it.\n` +
+        `- If the user asked for analysis/explanation → Provide a thorough, well-structured answer based on ALL gathered information.\n` +
+        `- Synthesize all tool results into a coherent response\n` +
+        `- Use clear structure (headings, lists, code blocks) as appropriate\n` +
+        `- If you need even deeper analysis, output ${markers.continueMarker} + [NEXT_PROMPT]\\n[direction]\\n[NEXT_PROMPT]\n` +
+        `- When fully done, end naturally or output ${markers.finishMarker}`
       );
     }
     return (
@@ -513,15 +612,13 @@ export class AgentLoop {
       `信息收集阶段（工具调用）已完成。你现在运行的是高级模型。\n` +
       `之前各轮的工具执行结果均在上方对话历史中。\n\n` +
       `原始问题："${this.store.originalQuestion}"\n\n` +
-      `请基于所有已收集的信息，提供一份详尽、结构清晰的回答。\n` +
-      `这是你面向用户的回答——将直接展示给用户。\n` +
-      `要求：\n` +
+      `你的任务：\n` +
+      `- 如果用户要求编辑/优化/创建代码或文件 → 使用 [TOOL_CALL: edit_file(...)] 或 [TOOL_CALL: create_file(...)] 直接执行修改。不要只描述要改什么——直接动手做。\n` +
+      `- 如果用户要求分析/解释 → 基于所有已收集的信息，提供详尽、结构清晰的回答。\n` +
       `- 将所有工具结果综合为连贯、全面的回答\n` +
-      `- 适当使用清晰的结构（标题、列表、表格）\n` +
-      `- 在适用时引用来源\n` +
+      `- 适当使用清晰的结构（标题、列表、代码块）\n` +
       `- 如需更深入分析，可输出 ${markers.continueMarker} + [NEXT_PROMPT]\\n[方向]\\n[NEXT_PROMPT]\n` +
-      `- 不要输出 [TOOL_CALL: ...] —— 信息收集阶段已结束\n` +
-      `- 对回答满意时自然结束，或输出 ${markers.finishMarker}`
+      `- 完成后自然结束，或输出 ${markers.finishMarker}`
     );
   }
 

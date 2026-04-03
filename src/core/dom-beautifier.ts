@@ -89,6 +89,22 @@ function buildToolCallCard(
     const label = lang === 'en' ? 'Web search' : '联网搜索';
     chip.innerHTML = `${mkSvg(IC_GLOBE)}<span class="dt-tool-chip-label">${label}</span><span class="dt-tool-chip-text">${escHtml(display)}</span>`;
     row.appendChild(chip);
+  } else if (name === 'edit_file') {
+    const path = typeof args.path === 'string' ? args.path : '';
+    const fileName = path.replace(/\\/g, '/').split('/').pop() ?? path;
+    const chip = document.createElement('span');
+    chip.className = 'dt-tool-call-chip dt-tool-edit-chip';
+    const IC_EDIT = `<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/>`;
+    chip.innerHTML = `${mkSvg(IC_EDIT)}<span class="dt-file-ext ${getExtClass(fileName)}">${escHtml(fileName.split('.').pop() || '?')}</span><span class="dt-tool-chip-text">${escHtml(path)}</span>`;
+    row.appendChild(chip);
+  } else if (name === 'create_file') {
+    const path = typeof args.path === 'string' ? args.path : '';
+    const fileName = path.replace(/\\/g, '/').split('/').pop() ?? path;
+    const chip = document.createElement('span');
+    chip.className = 'dt-tool-call-chip dt-tool-create-chip';
+    const IC_PLUS = `<path d="M5 12h14"/><path d="M12 5v14"/>`;
+    chip.innerHTML = `${mkSvg(IC_PLUS)}<span class="dt-file-ext ${getExtClass(fileName)}">${escHtml(fileName.split('.').pop() || '?')}</span><span class="dt-tool-chip-text">${escHtml(path)}</span>`;
+    row.appendChild(chip);
   } else {
     const chip = document.createElement('span');
     chip.className = 'dt-tool-call-chip';
@@ -674,6 +690,43 @@ export class DOMBeautifier {
     });
   }
 
+  /** 将 edit_file 工具结果标记为 diff 挂载点，供 React DiffBlock 渲染。 */
+  private renderEditResultBlocks(responseEl: HTMLElement): void {
+    responseEl.querySelectorAll('p, pre, li, div').forEach((child) => {
+      const el = child as HTMLElement;
+      if (el.dataset.dtEditResult) return;
+      if (el.closest('[data-dt-edit-result]')) return;
+
+      const ct = el.textContent ?? '';
+      // 匹配 [TOOL_RESULT: edit_file] 或 [TOOL_RESULT: create_file] 或 write_local_file 后跟 JSON
+      const editMatch = ct.match(/\[TOOL_RESULT:\s*(?:edit_file|create_file|write_local_file)\]\s*(\{[\s\S]*?\})/);
+      if (!editMatch) return;
+
+      try {
+        const result = JSON.parse(editMatch[1]);
+        if (!result.diff) return;
+
+        // 找到对应的 pendingEdit
+        const edits = this.store.pendingEdits;
+        const edit = edits.find(e => e.diff === result.diff && e.status === 'applied');
+        if (!edit || edit.id === undefined) return;
+
+        // 创建 diff 挂载点
+        el.innerHTML = '';
+        el.dataset.dtEditResult = '1';
+        const mount = document.createElement('div');
+        mount.className = 'dt-diff-mount';
+        mount.dataset.dtEditId = String(edit.id);
+        mount.dataset.dtFilePath = edit.path;
+        mount.dataset.dtDiff = edit.diff;
+        mount.dataset.dtStatus = edit.status;
+        el.appendChild(mount);
+      } catch {
+        // JSON 解析失败，跳过
+      }
+    });
+  }
+
   /** 将 responseEl 内所有 [TOOL_CALL:] 所在的块元素替换为 UI 卡片。 */
   private renderToolCallBlocks(responseEl: HTMLElement): void {
     const lang = this.store.config.language;
@@ -695,6 +748,18 @@ export class DOMBeautifier {
 
       for (const tc of toolCalls) {
         el.appendChild(buildToolCallCard(tc.name, tc.args, lang));
+      }
+      // 为 edit_file 创建 diff 挂载点
+      for (const tc of toolCalls) {
+        if (tc.name === 'edit_file') {
+          const path = typeof tc.args.path === 'string' ? tc.args.path : '';
+          const mount = document.createElement('div');
+          mount.className = 'dt-diff-mount';
+          mount.dataset.dtDiffMount = '1';
+          mount.dataset.filePath = path;
+          mount.dataset.editTool = '1';
+          el.appendChild(mount);
+        }
       }
       if (remaining) {
         el.appendChild(document.createTextNode(remaining));
@@ -791,6 +856,8 @@ export class DOMBeautifier {
 
       // 将 [TOOL_CALL:] 行替换为可视化卡片（生成完毕后才替换，避免打断流式输出）
       this.renderToolCallBlocks(el);
+      // 渲染 edit_file 工具结果为 diff 卡片
+      this.renderEditResultBlocks(el);
 
       // 遍历文本节点，删除标记文本
       const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);

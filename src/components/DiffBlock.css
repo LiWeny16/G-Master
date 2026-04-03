@@ -1,0 +1,291 @@
+/* DiffBlock styles — all classes prefixed with dt-diff- to avoid host page conflicts */
+
+.dt-diff-container {
+  border-radius: 8px;
+  border: 1px solid rgba(139, 115, 85, 0.25);
+  overflow: hidden;
+  margin: 8px 0;
+  max-width: 100%;
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  background: #fff;
+}
+
+/* ── Header ── */
+.dt-diff-header {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: rgba(139, 115, 85, 0.06);
+  border-bottom: 1px solid rgba(139, 115, 85, 0.15);
+  min-height: 32px;
+}
+
+.dt-diff-file-icon {
+  color: #8B7355;
+  flex-shrink: 0;
+}
+
+.dt-diff-file-path {
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 500;
+  color: #8B7355;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.dt-diff-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* ── Collapse toggle ── */
+.dt-diff-collapse-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  background: none;
+  border: none;
+  color: #8B7355;
+  padding: 2px;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+
+.dt-diff-collapse-btn:hover {
+  background: rgba(139, 115, 85, 0.1);
+}
+
+/* ── Diff body ── */
+.dt-diff-body {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+/* ── Lines ── */
+.dt-diff-line {
+  display: flex;
+  flex-direction: row;
+  min-height: 18px;
+}
+
+.dt-diff-gutter {
+  width: 40px;
+  min-width: 40px;
+  text-align: right;
+  color: #999;
+  user-select: none;
+  -webkit-user-select: none;
+  padding: 0 8px 0 0;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  border-right: 1px solid rgba(139, 115, 85, 0.1);
+}
+
+.dt-diff-gutter-old,
+.dt-diff-gutter-new {
+  width: 40px;
+  min-width: 40px;
+  text-align: right;
+  color: #999;
+  font-size: 11px;
+  user-select: none;
+  -webkit-user-select: none;
+  padding: 0 8px 0 0;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  border-right: 1px solid rgba(139, 115, 85, 0.1);
+}
+
+.dt-diff-content {
+  flex: 1;
+  padding: 0 8px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  min-width: 0;
+}
+
+/* ── Line types ── */
+.dt-diff-added {
+  background: rgba(46, 160, 67, 0.15);
+}
+
+.dt-diff-added .dt-diff-content::before {
+  content: '+';
+  color: #2ea043;
+  margin-right: 4px;
+  font-weight: 600;
+}
+
+.dt-diff-removed {
+  background: rgba(248, 81, 73, 0.15);
+}
+
+.dt-diff-removed .dt-diff-content::before {
+  content: '-';
+  color: #f85149;
+  margin-right: 4px;
+  font-weight: 600;
+}
+
+.dt-diff-context {
+  background: transparent;
+}
+
+.dt-diff-header-line {
+  color: #8B7355;
+  background: rgba(139, 115, 85, 0.06);
+  font-weight: 600;
+}
+
+.dt-diff-header-line .dt-diff-content {
+  color: #8B7355;
+}
+
+/* ── Buttons ── */
+.dt-diff-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  border: none;
+  transition: background 0.15s;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.dt-diff-btn-reject {
+  background: rgba(248, 81, 73, 0.1);
+  color: #f85149;
+}
+
+.dt-diff-btn-reject:hover {
+  background: rgba(248, 81, 73, 0.2);
+}
+
+.dt-diff-btn-accept {
+  background: rgba(46, 160, 67, 0.1);
+  color: #2ea043;
+}
+
+.dt-diff-btn-accept:hover {
+  background: rgba(46, 160, 67, 0.2);
+}
+
+/* ── Status badge ── */
+.dt-diff-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  line-height: 1.4;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.dt-diff-status-rejected {
+  background: rgba(248, 81, 73, 0.08);
+  color: #f85149;
+}
+
+.dt-diff-status-applied {
+  background: rgba(46, 160, 67, 0.08);
+  color: #2ea043;
+}
+
+/* ── Dark mode ── */
+@media (prefers-color-scheme: dark) {
+  .dt-diff-container {
+    background: #1a1a1a;
+    border-color: rgba(255, 255, 255, 0.1);
+    color: #e0e0e0;
+  }
+
+  .dt-diff-header {
+    background: rgba(255, 255, 255, 0.04);
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+  }
+
+  .dt-diff-file-path {
+    color: #c4a97d;
+  }
+
+  .dt-diff-file-icon {
+    color: #c4a97d;
+  }
+
+  .dt-diff-collapse-btn {
+    color: #c4a97d;
+  }
+
+  .dt-diff-collapse-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .dt-diff-gutter {
+    color: #666;
+    border-right-color: rgba(255, 255, 255, 0.06);
+  }
+
+  .dt-diff-added {
+    background: rgba(46, 160, 67, 0.2);
+  }
+
+  .dt-diff-removed {
+    background: rgba(248, 81, 73, 0.2);
+  }
+
+  .dt-diff-header-line {
+    background: rgba(255, 255, 255, 0.04);
+    color: #c4a97d;
+  }
+
+  .dt-diff-header-line .dt-diff-content {
+    color: #c4a97d;
+  }
+
+  .dt-diff-btn-reject {
+    background: rgba(248, 81, 73, 0.15);
+    color: #ff7b72;
+  }
+
+  .dt-diff-btn-reject:hover {
+    background: rgba(248, 81, 73, 0.25);
+  }
+
+  .dt-diff-btn-accept {
+    background: rgba(46, 160, 67, 0.15);
+    color: #3fb950;
+  }
+
+  .dt-diff-btn-accept:hover {
+    background: rgba(46, 160, 67, 0.25);
+  }
+
+  .dt-diff-status-rejected {
+    background: rgba(248, 81, 73, 0.12);
+    color: #ff7b72;
+  }
+
+  .dt-diff-status-applied {
+    background: rgba(46, 160, 67, 0.12);
+    color: #3fb950;
+  }
+}

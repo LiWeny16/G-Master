@@ -1,5 +1,5 @@
 import { makeAutoObservable, runInAction, toJS } from 'mobx';
-import { DeepThinkConfig, DEFAULT_CONFIG, EnginePhase, AgentMode, getReviewPhases, getSystemPromptTemplate, ClarifyQuestion } from '../types';
+import { DeepThinkConfig, DEFAULT_CONFIG, EnginePhase, AgentMode, getReviewPhases, getSystemPromptTemplate, ClarifyQuestion, FileEdit, PendingFileOp } from '../types';
 import { PersistService } from '../services/persist-service';
 import i18n from '../i18n';
 
@@ -14,8 +14,8 @@ export class StateStore {
   lastRawText = '';
   isPanelOpen = false;
 
-  /** 工作流阶段: idle=空闲, running=Agent循环中, clarify=等待用户答问卷 */
-  userWorkflowPhase: 'idle' | 'running' | 'clarify' = 'idle';
+  /** 工作流阶段: idle=空闲, running=Agent循环中, clarify=等待用户答问卷, awaiting_file_op=等待用户审批文件操作 */
+  userWorkflowPhase: 'idle' | 'running' | 'clarify' | 'awaiting_file_op' = 'idle';
   /** 当前用户提问轮内，已连续工具回合次数（防刷） / Consecutive tool call rounds in current user turn (Anti-spam) */
   toolCallRoundsThisSession = 0;
   /** 当前用户提问轮内，澄清问卷触发次数（防止无限追问） */
@@ -24,6 +24,14 @@ export class StateStore {
   maxClarifyRoundsPerTurn = 2;
   /** 待澄清的问卷问题列表（当 phase === 'clarify' 时有效） */
   clarifyQuestions: ClarifyQuestion[] = [];
+
+  /** 待用户审批的文件操作（同时最多一个） */
+  pendingFileOps: PendingFileOp[] = [];
+
+  /** 当前会话的文件编辑记录（运行时，用于 DOM 渲染 diff） */
+  pendingEdits: FileEdit[] = [];
+  /** 当前编辑会话 ID（每次 start() 重新生成） */
+  editSessionId: string = '';
 
   // === 用户配置（持久化） / User Config (Persisted) ===
   config: DeepThinkConfig = { ...DEFAULT_CONFIG };
@@ -89,6 +97,7 @@ export class StateStore {
     this.toolCallRoundsThisSession = 0;
     this.clarifyRoundsThisSession = 0;
     this.clarifyQuestions = [];
+    // Note: pendingEdits and editSessionId are NOT reset here — they persist across the conversation
   }
 
   tryEnterClarifyRound(): boolean {
@@ -98,6 +107,8 @@ export class StateStore {
     this.clarifyRoundsThisSession += 1;
     return true;
   }
+
+
 
   updateConfig(partial: Partial<DeepThinkConfig>): void {
     // 范围校验 / Range Validation
@@ -207,5 +218,34 @@ export class StateStore {
   flushPersist(): void {
     if (this.persistTimer) clearTimeout(this.persistTimer);
     PersistService.save(toJS(this.config));
+  }
+
+  /** 添加一条文件编辑记录 */
+  addPendingEdit(edit: FileEdit): void {
+    this.pendingEdits.push(edit);
+  }
+
+  /** 更新编辑状态（accept/reject） */
+  updatePendingEditStatus(editId: number, status: 'applied' | 'rejected'): void {
+    const edit = this.pendingEdits.find(e => e.id === editId);
+    if (edit) edit.status = status;
+  }
+
+  /** 生成新的编辑会话 ID */
+  newEditSession(): void {
+    this.editSessionId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  }
+
+  /** 添加一个待审批的文件操作 */
+  addPendingFileOp(op: PendingFileOp): void {
+    this.pendingFileOps.push(op);
+  }
+
+  /** 移除已处理（批准或拒绝）的文件操作 */
+  removePendingFileOp(opId: string): void {
+    this.pendingFileOps = this.pendingFileOps.filter(op => op.id !== opId);
+    if (this.pendingFileOps.length === 0 && this.userWorkflowPhase === 'awaiting_file_op') {
+      this.userWorkflowPhase = 'running';
+    }
   }
 }

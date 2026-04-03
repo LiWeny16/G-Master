@@ -8,6 +8,7 @@ import { DOMObserver } from '../core/dom-observer';
 import FloatingBall from '../components/FloatingBall';
 import Panel from '../components/Panel';
 import ClarifyModal from '../components/ClarifyModal';
+import FileOpApprovalModal from '../components/FileOpApprovalModal';
 import { useInlineToggle } from './useInlineToggle';
 import { useDoubaoInlineToggle } from './useDoubaoInlineToggle';
 import { useChatGPTInlineToggle } from './useChatGPTInlineToggle';
@@ -17,6 +18,11 @@ import { useGeminiEnterpriseInlineToggle } from './useGeminiEnterpriseInlineTogg
 import { GeminiConversationBulkDeleteController } from './gemini-bulk-delete';
 import i18n from '../i18n';
 import { restoreHandle, hasRoot } from '../background/tools/local-workspace';
+import { updateEditStatus } from '../background/tools/edit-history';
+import { writeTextFile } from '../background/tools/local-workspace';
+import { createRoot } from 'react-dom/client';
+import DiffBlock from '../components/DiffBlock';
+import '../components/DiffBlock.css';
 
 const store = new StateStore();
 const adapter = createSiteAdapter();
@@ -70,6 +76,12 @@ const ContentApp: React.FC = observer(() => {
     domObserver.start();
     observerRef.current = domObserver;
 
+    // 监听 diff 挂载点出现，自动渲染 DiffBlock
+    const diffObserver = new MutationObserver(() => {
+      renderDiffMounts();
+    });
+    diffObserver.observe(document.body, { childList: true, subtree: true });
+
     // 对话侧边栏多选批量删除增强（仅 Gemini）
     if (siteId === 'gemini' || siteId === 'gemini-enterprise') {
       bulkDeleteController.start();
@@ -107,6 +119,7 @@ const ContentApp: React.FC = observer(() => {
     return () => {
       document.removeEventListener('keydown', handleKeydown, true);
       document.removeEventListener('click', handleClick, true);
+      diffObserver.disconnect();
       if (siteId === 'gemini' || siteId === 'gemini-enterprise') {
         bulkDeleteController.stop();
       }
@@ -138,8 +151,8 @@ const ContentApp: React.FC = observer(() => {
     if (store.currentLoop > 0) return;
     // Agent 循环运行中：禁止重复发送
     if (store.userWorkflowPhase === 'running') return;
-    // 问卷模式中：禁止用户直接发送，必须通过问卷 UI
-    if (store.userWorkflowPhase === 'clarify') {
+    // 问卷/文件审批模式中：禁止用户直接发送
+    if (store.userWorkflowPhase === 'clarify' || store.userWorkflowPhase === 'awaiting_file_op') {
       e.preventDefault();
       e.stopPropagation();
       return;
@@ -205,6 +218,69 @@ const ContentApp: React.FC = observer(() => {
     void agentLoop.resumeAfterClarify([]);
   };
 
+  /** 拒绝编辑（回滚到原始内容） */
+  const handleEditReject = async (editId: number) => {
+    try {
+      const edit = store.pendingEdits.find(e => e.id === editId);
+      if (!edit) return;
+      // 写回原始内容
+      await writeTextFile(edit.path, edit.originalContent);
+      await updateEditStatus(editId, 'rejected');
+      store.updatePendingEditStatus(editId, 'rejected');
+      // 更新 DOM 中的 diff 挂载点状态
+      document.querySelectorAll(`[data-dt-edit-id="${editId}"]`).forEach(el => {
+        (el as HTMLElement).dataset.dtStatus = 'rejected';
+      });
+      renderDiffMounts();
+    } catch (e) {
+      console.error('[G-Master] Edit reject failed:', e);
+    }
+  };
+
+  /** 重新应用编辑 */
+  const handleEditAccept = async (editId: number) => {
+    try {
+      const edit = store.pendingEdits.find(e => e.id === editId);
+      if (!edit) return;
+      // 写入新内容
+      await writeTextFile(edit.path, edit.newContent);
+      await updateEditStatus(editId, 'applied');
+      store.updatePendingEditStatus(editId, 'applied');
+      // 更新 DOM 中的 diff 挂载点状态
+      document.querySelectorAll(`[data-dt-edit-id="${editId}"]`).forEach(el => {
+        (el as HTMLElement).dataset.dtStatus = 'applied';
+      });
+      renderDiffMounts();
+    } catch (e) {
+      console.error('[G-Master] Edit accept failed:', e);
+    }
+  };
+
+  /** 扫描并挂载所有 .dt-diff-mount 节点为 React DiffBlock */
+  const renderDiffMounts = () => {
+    document.querySelectorAll('.dt-diff-mount').forEach(mount => {
+      const el = mount as HTMLElement;
+      const editId = parseInt(el.dataset.dtEditId || '0', 10);
+      const filePath = el.dataset.dtFilePath || '';
+      const diff = el.dataset.dtDiff || '';
+      const status = (el.dataset.dtStatus || 'applied') as 'applied' | 'rejected';
+      if (!editId || el.dataset.dtRendered === '1') return;
+      el.dataset.dtRendered = '1';
+      const root = createRoot(el);
+      root.render(
+        <DiffBlock
+          filePath={filePath}
+          diff={diff}
+          editId={editId}
+          status={status}
+          onReject={handleEditReject}
+          onAccept={handleEditAccept}
+          lang={store.config.language}
+        />
+      );
+    });
+  };
+
   /* 工具栏内联开关：各站点各自注入，配置未加载完或站点被禁用时传 false */
   useInlineToggle(store, handleToggleEngine, handleAbort, isSiteEnabled && siteId === 'gemini');
   useGeminiEnterpriseInlineToggle(store, handleToggleEngine, handleAbort, isSiteEnabled && siteId === 'gemini-enterprise');
@@ -226,11 +302,18 @@ const ContentApp: React.FC = observer(() => {
         allowAutoMode={siteId !== 'zhipu'}
         onClose={() => setPanelOpen(false)}
         onAbort={handleAbort}
+        onEditReject={handleEditReject}
+        onEditAccept={handleEditAccept}
       />
       <ClarifyModal
         store={store}
         onSubmit={handleClarifySubmit}
         onSkip={handleClarifySkip}
+      />
+      <FileOpApprovalModal
+        store={store}
+        onApprove={(opId) => agentLoop.resolveFileOp(opId, true)}
+        onReject={(opId) => agentLoop.resolveFileOp(opId, false)}
       />
     </>
   );

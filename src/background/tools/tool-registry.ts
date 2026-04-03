@@ -1,4 +1,4 @@
-import { readTextFile, readMultipleFiles, listDirectory, searchFiles, grepFiles, attachFileToChat } from './local-workspace.ts';
+import { readTextFile, readMultipleFiles, listDirectory, searchFiles, grepFiles, attachFileToChat, writeTextFile, renameFile, moveFile, createDirectory, deleteFile, batchRenameFiles } from './local-workspace.ts';
 import { tavilySearch } from './tavily-search.ts';
 
 function requireString(args: Record<string, unknown>, key: string): string {
@@ -31,8 +31,11 @@ function optionalBool(args: Record<string, unknown>, key: string): boolean | und
  * 判断工具是否为本地文件系统工具（应在 content script 本地执行）
  */
 export function isLocalFileTool(name: string): boolean {
-  return ['list_directory', 'read_file', 'read_files', 'search_files', 'grep_files', 'attach_file_to_chat',
-          'read_local_file', 'write_local_file'].includes(name);
+  return [
+    'list_directory', 'read_file', 'read_files', 'search_files', 'grep_files', 'attach_file_to_chat',
+    'read_local_file', 'write_local_file', 'create_file',
+    'rename_file', 'move_file', 'create_directory', 'delete_file', 'batch_rename',
+  ].includes(name);
 }
 
 /**
@@ -87,10 +90,45 @@ export async function executeLocalTool(
       const targetSelector = typeof args.targetSelector === 'string' ? args.targetSelector : undefined;
       return attachFileToChat(path, targetSelector);
     }
-    case 'write_local_file': {
-      // 写入操作保留但当前抛错禁用
-      throw new Error('File writing is currently disabled for safety. Only read operations are allowed.');
+    case 'write_local_file':
+    case 'create_file': {
+      const path = requireString(args, 'path');
+      const content = requireString(args, 'content');
+      return writeTextFile(path, content);
     }
+    case 'rename_file': {
+      const path = requireString(args, 'path');
+      const newName = requireString(args, 'newName');
+      return renameFile(path, newName);
+    }
+    case 'move_file': {
+      const srcPath = requireString(args, 'srcPath');
+      const destPath = requireString(args, 'destPath');
+      return moveFile(srcPath, destPath);
+    }
+    case 'create_directory': {
+      const path = requireString(args, 'path');
+      return createDirectory(path);
+    }
+    case 'delete_file': {
+      const path = requireString(args, 'path');
+      return deleteFile(path);
+    }
+    case 'batch_rename': {
+      const renames = args.renames;
+      if (!Array.isArray(renames) || renames.length === 0) {
+        throw new Error('batch_rename requires non-empty "renames" array');
+      }
+      const validRenames = renames.filter(
+        (r): r is { from: string; to: string } =>
+          typeof r === 'object' && r !== null &&
+          typeof r.from === 'string' && typeof r.to === 'string',
+      );
+      if (validRenames.length === 0) throw new Error('No valid rename entries');
+      return batchRenameFiles(validRenames);
+    }
+    case 'edit_file':
+      throw new Error('不支持编辑已有文件。请改用 create_file 创建新文件，或使用 rename_file/move_file 重命名和移动文件。');
     default:
       throw new Error(`Unknown local tool: ${name}`);
   }

@@ -136,7 +136,7 @@ const WorkspaceTab: React.FC<Props> = observer(({ store }) => {
   const handleSelectFolder = useCallback(async () => {
     if (!isSupported) return;
     try {
-      const dirHandle = await window.showDirectoryPicker!({ mode: 'read' });
+      const dirHandle = await window.showDirectoryPicker!({ mode: 'readwrite' });
       setRoot(dirHandle);
       await persistHandle();
       setRestoreFailed(false);

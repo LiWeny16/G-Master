@@ -55,3 +55,20 @@ export const DEFAULT_MAX_TOOL_ROUNDS = 8;
 
 /** 循环思考使用的模型（loopModel） */
 export const DEFAULT_LOOP_MODEL = 'pro' as const;
+
+// ── Marker 配置（Action Markers） ─────────────────────────
+
+/** 控制 Agent 循环行为的 Marker 字符串配置 */
+export interface ActionMarkerConfig {
+  continueMarker: string;
+  finishMarker: string;
+  nextPromptPattern: string;
+  dtMarkerPattern: string;
+}
+
+export const DEFAULT_MARKERS: ActionMarkerConfig = {
+  continueMarker: '[THINK_MORE]',
+  finishMarker: '[GOAL_REACHED]',
+  nextPromptPattern: '\\[NEXT_PROMPT\\]\\s*([\\s\\S]*?)\\s*\\[NEXT_PROMPT\\]',
+  dtMarkerPattern: '⟪DT:(.+?)⟫',
+};

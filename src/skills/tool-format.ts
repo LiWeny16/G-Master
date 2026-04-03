@@ -35,6 +35,26 @@ export const TOOL_CALL_SEARCH_FILES =
 /** @deprecated 保留旧名兼容，等同于 TOOL_CALL_READ_FILE */
 export const TOOL_CALL_LOCAL_FILE_READ = TOOL_CALL_READ_FILE;
 
-/** @deprecated 写入暂时禁用 */
 export const TOOL_CALL_LOCAL_FILE_WRITE =
   '[TOOL_CALL: write_local_file({"path":"<相对路径>","content":"<完整文件内容>"})]' as const;
+
+export const TOOL_CALL_EDIT_FILE =
+  '[TOOL_CALL: edit_file({"path":"<工作区相对路径，必填>","old_str":"<要替换的原始文本，必须精确匹配>","new_str":"<替换后的新文本>"})]' as const;
+
+export const TOOL_CALL_CREATE_FILE =
+  '[TOOL_CALL: create_file({"path":"<工作区相对路径>","content":"<完整文件内容>"})]' as const;
+
+export const TOOL_CALL_RENAME_FILE =
+  '[TOOL_CALL: rename_file({"path":"<文件相对路径>","newName":"<新文件名（不含路径）>"})]' as const;
+
+export const TOOL_CALL_MOVE_FILE =
+  '[TOOL_CALL: move_file({"srcPath":"<源文件相对路径>","destPath":"<目标相对路径（含新文件名）>"})]' as const;
+
+export const TOOL_CALL_CREATE_DIRECTORY =
+  '[TOOL_CALL: create_directory({"path":"<目录相对路径>"})]' as const;
+
+export const TOOL_CALL_DELETE_FILE =
+  '[TOOL_CALL: delete_file({"path":"<文件相对路径>"})]' as const;
+
+export const TOOL_CALL_BATCH_RENAME =
+  '[TOOL_CALL: batch_rename({"renames":[{"from":"<原路径>","to":"<新路径>"},{"from":"<原路径2>","to":"<新路径2>"}]})]' as const;

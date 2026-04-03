@@ -91,19 +91,34 @@ export async function restoreHandle(): Promise<boolean> {
     db.close();
     if (!handle) return false;
 
-    // 检查权限是否仍有效
-    const perm = await handle.queryPermission?.({ mode: 'read' });
+    // 检查权限是否仍有效（含写权限）
+    const perm = await handle.queryPermission?.({ mode: 'readwrite' });
     if (perm === 'granted') {
       setRoot(handle);
       return true;
     }
     // 尝试重新请求权限（需要用户手势上下文，此处可能失败）
-    const reqPerm = await handle.requestPermission?.({ mode: 'read' });
+    const reqPerm = await handle.requestPermission?.({ mode: 'readwrite' });
     if (reqPerm === 'granted') {
       setRoot(handle);
       return true;
     }
     return false;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 请求 readwrite 权限（首次写入时需要用户手势上下文）
+ */
+export async function requestWritePermission(): Promise<boolean> {
+  if (!workspaceRoot) return false;
+  const perm = await workspaceRoot.queryPermission?.({ mode: 'readwrite' });
+  if (perm === 'granted') return true;
+  try {
+    const req = await workspaceRoot.requestPermission?.({ mode: 'readwrite' });
+    return req === 'granted';
   } catch {
     return false;
   }
@@ -617,17 +632,187 @@ export async function attachFileToChat(
 }
 
 /**
- * write_file — 写入文件（保留但当前禁用，需要显式开启）
+ * write_file — 写入或创建文本文件（会自动创建中间目录）
  */
-export async function writeTextFile(relativePath: string, content: string): Promise<void> {
+export async function writeTextFile(
+  relativePath: string,
+  content: string,
+): Promise<{ success: boolean; created: boolean }> {
+  if (!workspaceRoot) throw new Error('Workspace root is not set');
+  const hasWrite = await requestWritePermission();
+  if (!hasWrite) throw new Error('Write permission denied. Please re-authorize the folder with write access.');
+  
   const segments = sanitizedSegments(relativePath);
   if (segments.length === 0) throw new Error('Invalid path: empty');
   const { dir, fileName } = await getDirectoryForSegments(segments, true);
+  
+  let created = false;
+  try {
+    await dir.getFileHandle(fileName);
+  } catch {
+    created = true;
+  }
+  
   const fileHandle = await dir.getFileHandle(fileName, { create: true });
   const writable = await fileHandle.createWritable();
+  await writable.write(content);
+  await writable.close();
+  
+  return { success: true, created };
+}
+
+/**
+ * edit_file — 已禁用：不支持编辑已有文件。
+ * 请使用 create_file 创建新文件，或使用 rename_file / move_file 重命名/移动。
+ */
+export async function editTextFile(
+  _relativePath: string,
+  _oldStr: string,
+  _newStr: string,
+): Promise<never> {
+  throw new Error(
+    '不支持编辑已有文件。请改用 create_file 创建新文件，或使用 rename_file/move_file 进行重命名/移动。',
+  );
+}
+
+// ==========================================
+// 文件系统类似修改操作（圈除 edit）
+// ==========================================
+
+/**
+ * 检查文件是否存在。
+ */
+export async function fileExists(relativePath: string): Promise<boolean> {
   try {
-    await writable.write(content);
-  } finally {
-    await writable.close();
+    if (!workspaceRoot) return false;
+    const segments = sanitizedSegments(relativePath);
+    if (segments.length === 0) return false;
+    const { dir, fileName } = await getDirectoryForSegments(segments, false);
+    await dir.getFileHandle(fileName);
+    return true;
+  } catch {
+    return false;
   }
+}
+
+/**
+ * rename_file — 将文件在原目录内改名。
+ * newName 只能是文件名（不含目录）；若需要移动请用 moveFile。
+ */
+export async function renameFile(
+  relativePath: string,
+  newName: string,
+): Promise<{ success: boolean }> {
+  if (!workspaceRoot) throw new Error('Workspace root is not set');
+  const hasWrite = await requestWritePermission();
+  if (!hasWrite) throw new Error('Write permission denied');
+  if (newName.includes('/') || newName.includes('\\')) {
+    throw new Error('newName 必须只是文件名（不含路径分隔符）。如需移动目录请使用 move_file。');
+  }
+  const segments = sanitizedSegments(relativePath);
+  if (segments.length === 0) throw new Error('Invalid path');
+  const { dir, fileName } = await getDirectoryForSegments(segments, false);
+
+  const srcHandle = await dir.getFileHandle(fileName);
+  const srcFile = await srcHandle.getFile();
+  const isBin = isBinaryExtension(newName);
+  const content = isBin ? await srcFile.arrayBuffer() : await srcFile.text();
+
+  const destHandle = await dir.getFileHandle(newName, { create: true });
+  const writable = await destHandle.createWritable();
+  await writable.write(content);
+  await writable.close();
+
+  await dir.removeEntry(fileName);
+  return { success: true };
+}
+
+/**
+ * move_file — 将文件移动到新路径（可跨目录改名）。
+ */
+export async function moveFile(
+  srcPath: string,
+  destPath: string,
+): Promise<{ success: boolean }> {
+  if (!workspaceRoot) throw new Error('Workspace root is not set');
+  const hasWrite = await requestWritePermission();
+  if (!hasWrite) throw new Error('Write permission denied');
+
+  const srcSegments = sanitizedSegments(srcPath);
+  if (srcSegments.length === 0) throw new Error('Invalid srcPath');
+  const destSegments = sanitizedSegments(destPath);
+  if (destSegments.length === 0) throw new Error('Invalid destPath');
+
+  const { dir: srcDir, fileName: srcName } = await getDirectoryForSegments(srcSegments, false);
+  const srcHandle = await srcDir.getFileHandle(srcName);
+  const srcFile = await srcHandle.getFile();
+  const isBin = isBinaryExtension(srcName);
+  const content = isBin ? await srcFile.arrayBuffer() : await srcFile.text();
+
+  const { dir: destDir, fileName: destName } = await getDirectoryForSegments(destSegments, true);
+  const destHandle = await destDir.getFileHandle(destName, { create: true });
+  const writable = await destHandle.createWritable();
+  await writable.write(content);
+  await writable.close();
+
+  await srcDir.removeEntry(srcName);
+  return { success: true };
+}
+
+/**
+ * create_directory — 创建目录（自动创建中间目录）。
+ */
+export async function createDirectory(
+  relativePath: string,
+): Promise<{ success: boolean }> {
+  if (!workspaceRoot) throw new Error('Workspace root is not set');
+  const hasWrite = await requestWritePermission();
+  if (!hasWrite) throw new Error('Write permission denied');
+
+  const segments = sanitizedSegments(relativePath);
+  if (segments.length === 0) throw new Error('Invalid path');
+
+  let dir = workspaceRoot;
+  for (const name of segments) {
+    dir = await dir.getDirectoryHandle(name, { create: true });
+  }
+  return { success: true };
+}
+
+/**
+ * delete_file — 删除文件（不能删除目录）。
+ */
+export async function deleteFile(
+  relativePath: string,
+): Promise<{ success: boolean }> {
+  if (!workspaceRoot) throw new Error('Workspace root is not set');
+  const hasWrite = await requestWritePermission();
+  if (!hasWrite) throw new Error('Write permission denied');
+
+  const segments = sanitizedSegments(relativePath);
+  if (segments.length === 0) throw new Error('Invalid path');
+  const { dir, fileName } = await getDirectoryForSegments(segments, false);
+  await dir.removeEntry(fileName);
+  return { success: true };
+}
+
+/**
+ * batch_rename — 批量重命名/移动文件。
+ */
+export async function batchRenameFiles(
+  renames: { from: string; to: string }[],
+): Promise<{ success: boolean; results: { from: string; to: string; success: boolean; error?: string }[] }> {
+  const hasWrite = await requestWritePermission();
+  if (!hasWrite) throw new Error('Write permission denied');
+
+  const results: { from: string; to: string; success: boolean; error?: string }[] = [];
+  for (const { from, to } of renames) {
+    try {
+      await moveFile(from, to);
+      results.push({ from, to, success: true });
+    } catch (e) {
+      results.push({ from, to, success: false, error: e instanceof Error ? e.message : String(e) });
+    }
+  }
+  return { success: results.every(r => r.success), results };
 }

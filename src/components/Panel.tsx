@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { runInAction } from 'mobx';
 import { observer } from 'mobx-react-lite';
-import { X, Loader2, CheckCircle2, Sparkles, Settings2, Info, Pin, Trash2, Plus, ChevronDown, ChevronUp, FolderOpen, Grid3X3 } from 'lucide-react';
+import { X, Loader2, CheckCircle2, Sparkles, Settings2, Info, Pin, Trash2, Plus, ChevronDown, ChevronUp, FolderOpen, Grid3X3, FileEdit } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { StateStore } from '../stores/state-store';
 import { DEFAULT_CONFIG, LoopModel } from '../types';
 import { PersistService } from '../services/persist-service';
 import WorkspaceTab from './WorkspaceTab';
 import SudokuGame from './SudokuGame';
+import EditHistoryPanel from './EditHistoryPanel';
 import {
   Alert,
   Box,
@@ -31,6 +32,8 @@ interface Props {
   allowAutoMode?: boolean;
   onClose: () => void;
   onAbort: () => void;
+  onEditReject?: (editId: number) => void;
+  onEditAccept?: (editId: number) => void;
 }
 
 const PANEL_THEME = createTheme({
@@ -299,16 +302,17 @@ const ProductLogo: React.FC<{ size?: number }> = ({ size = 16 }) => (
   </svg>
 );
 
-type TabType = 'workspace' | 'settings' | 'sudoku' | 'about';
+type TabType = 'workspace' | 'settings' | 'edits' | 'sudoku' | 'about';
 
 const TAB_CONFIG: Array<{ value: TabType; icon: React.ReactNode; labelKey: string }> = [
   { value: 'workspace', icon: <FolderOpen size={15} />, labelKey: 'panel_tab_workspace' },
+  { value: 'edits',     icon: <FileEdit size={15} />,   labelKey: 'panel_tab_edits'     },
   { value: 'settings',  icon: <Settings2 size={15} />,  labelKey: 'panel_tab_settings'  },
   { value: 'sudoku',    icon: <Grid3X3 size={15} />,    labelKey: 'panel_tab_sudoku'    },
   { value: 'about',     icon: <Info size={15} />,       labelKey: 'panel_tab_about'     },
 ];
 
-const Panel: React.FC<Props> = observer(({ store, open, anchorPos, allowAutoMode = true, onClose, onAbort }) => {
+const Panel: React.FC<Props> = observer(({ store, open, anchorPos, allowAutoMode = true, onClose, onAbort, onEditReject, onEditAccept }) => {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<TabType>('workspace');
 
@@ -402,6 +406,10 @@ const Panel: React.FC<Props> = observer(({ store, open, anchorPos, allowAutoMode
 
           {activeTab === 'workspace' && (
             <WorkspaceTab store={store} />
+          )}
+
+          {activeTab === 'edits' && (
+            <EditHistoryPanel store={store} onReject={onEditReject} onAccept={onEditAccept} />
           )}
 
           {activeTab === 'sudoku' && (
